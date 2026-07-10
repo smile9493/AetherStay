@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.models.booking import Booking, BookingStatus
 from app.models.inventory import DailyRoomInventory, InventoryStatus
 from app.models.room import Room, RoomStatus
+from app.models.user import User
 from app.schemas.room import BookingResponse
 from app.services import inventory_service
 from app.services.transaction import transaction
@@ -216,6 +217,34 @@ async def cancel_booking(
         booking.status = BookingStatus.CANCELLED
 
 
+async def delete_booking(
+    db: AsyncSession,
+    booking_id: int,
+    user_id: int,
+    is_admin: bool = False,
+) -> None:
+    """Permanently remove a cancelled or completed booking from the user's history."""
+    async with transaction(db):
+        booking = await _get_booking_for_update(db, booking_id)
+
+        if not is_admin and booking.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+        if booking.status not in (BookingStatus.CANCELLED, BookingStatus.CHECKED_OUT):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only cancelled or checked-out bookings can be deleted",
+            )
+
+        inv_result = await db.execute(
+            select(DailyRoomInventory).where(DailyRoomInventory.booking_id == booking_id)
+        )
+        for record in inv_result.scalars().all():
+            record.booking_id = None
+
+        await db.delete(booking)
+
+
 async def check_in_booking(db: AsyncSession, booking_id: int) -> Booking:
     async with transaction(db):
         booking = await _get_booking_for_update(db, booking_id)
@@ -237,9 +266,36 @@ async def check_out_booking(db: AsyncSession, booking_id: int) -> Booking:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Only checked-in bookings can check out",
             )
+
+        records = await inventory_service.get_inventory_for_booking(
+            db, booking.room_id, booking.check_in, booking.check_out, booking.id
+        )
+        if records:
+            inventory_service.mark_available(records)
+
         booking.status = BookingStatus.CHECKED_OUT
 
     return await _load_booking(db, booking_id)
+
+
+async def reconcile_stale_inventory(db: AsyncSession) -> int:
+    """Release inventory still marked held/booked for cancelled or checked-out bookings."""
+    result = await db.execute(
+        select(DailyRoomInventory)
+        .join(Booking, DailyRoomInventory.booking_id == Booking.id)
+        .where(
+            Booking.status.in_([BookingStatus.CANCELLED, BookingStatus.CHECKED_OUT]),
+            DailyRoomInventory.status.in_([InventoryStatus.HELD, InventoryStatus.BOOKED]),
+        )
+    )
+    records = list(result.scalars().all())
+    if not records:
+        return 0
+
+    async with transaction(db):
+        inventory_service.mark_available(records)
+
+    return len(records)
 
 
 def is_checkout_due(
@@ -346,6 +402,226 @@ async def release_expired_holds(db: AsyncSession) -> int:
                 booking.status = BookingStatus.CANCELLED
 
     return released
+
+
+_EDITABLE_STATUSES = {
+    BookingStatus.PENDING,
+    BookingStatus.CONFIRMED,
+    BookingStatus.CHECKED_IN,
+}
+
+
+async def _load_room_with_type(db: AsyncSession, room_id: int) -> Room:
+    result = await db.execute(
+        select(Room).options(selectinload(Room.room_type)).where(Room.id == room_id)
+    )
+    room = result.scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+    if room.status != RoomStatus.ACTIVE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Room is not available")
+    return room
+
+
+async def _claim_inventory_for_booking(
+    db: AsyncSession,
+    room_id: int,
+    check_in: date,
+    check_out: date,
+    booking_id: int,
+    booking_status: BookingStatus,
+) -> None:
+    required_days = (check_out - check_in).days
+    if required_days <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date range")
+
+    try:
+        records = await inventory_service.lock_inventory_for_update(db, room_id, check_in, check_out)
+    except inventory_service.InventoryLockError:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Room is being booked by another user, please retry later",
+        )
+
+    if len(records) != required_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Some dates in the range are not open for booking",
+        )
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    for record in records:
+        if record.booking_id == booking_id:
+            continue
+        if inventory_service.is_bookable(record, now):
+            if record.status == InventoryStatus.HELD:
+                inventory_service.mark_available([record])
+        elif inventory_service.is_held_valid(record, now):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Room is held by another user on {record.date}",
+            )
+        elif record.status == InventoryStatus.BOOKED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Room is not available on {record.date}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Room is not available on {record.date}",
+            )
+
+    if booking_status == BookingStatus.PENDING:
+        held_until = datetime.now(UTC) + timedelta(minutes=settings.HOLD_TTL_MINUTES)
+        inventory_service.mark_held(records, booking_id, held_until)
+    else:
+        inventory_service.mark_booked(records, booking_id)
+
+
+async def _release_booking_inventory(db: AsyncSession, booking: Booking) -> None:
+    records = await inventory_service.get_inventory_for_booking(
+        db, booking.room_id, booking.check_in, booking.check_out, booking.id
+    )
+    if records:
+        inventory_service.mark_available(records)
+
+
+def _recalculate_price(room: Room, check_in: date, check_out: date):
+    days = (check_out - check_in).days
+    return room.room_type.base_price * days
+
+
+async def create_admin_booking(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    room_id: int,
+    check_in: date,
+    check_out: date,
+    notes: str | None = None,
+    auto_confirm: bool = True,
+) -> Booking:
+    if check_out <= check_in:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date range")
+
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    try:
+        async with transaction(db):
+            room = await _load_room_with_type(db, room_id)
+            initial_status = BookingStatus.CONFIRMED if auto_confirm else BookingStatus.PENDING
+
+            booking = Booking(
+                user_id=user_id,
+                room_id=room_id,
+                check_in=check_in,
+                check_out=check_out,
+                total_price=_recalculate_price(room, check_in, check_out),
+                status=initial_status,
+                notes=notes,
+            )
+            db.add(booking)
+            await db.flush()
+
+            await _claim_inventory_for_booking(
+                db, room_id, check_in, check_out, booking.id, initial_status
+            )
+            booking_id = booking.id
+
+        return await _load_booking(db, booking_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to create admin booking: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create booking",
+        )
+
+
+async def update_booking_details(
+    db: AsyncSession,
+    booking_id: int,
+    *,
+    check_in: date | None = None,
+    check_out: date | None = None,
+    notes: str | None = None,
+) -> Booking:
+    async with transaction(db):
+        booking = await _get_booking_for_update(db, booking_id)
+
+        if booking.status not in _EDITABLE_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot edit this booking",
+            )
+
+        new_check_in = check_in if check_in is not None else booking.check_in
+        new_check_out = check_out if check_out is not None else booking.check_out
+
+        if new_check_out <= new_check_in:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid date range")
+
+        dates_changed = new_check_in != booking.check_in or new_check_out != booking.check_out
+
+        if dates_changed:
+            room = await _load_room_with_type(db, booking.room_id)
+            await _release_booking_inventory(db, booking)
+            await _claim_inventory_for_booking(
+                db,
+                booking.room_id,
+                new_check_in,
+                new_check_out,
+                booking.id,
+                booking.status,
+            )
+            booking.check_in = new_check_in
+            booking.check_out = new_check_out
+            booking.total_price = _recalculate_price(room, new_check_in, new_check_out)
+
+        if notes is not None:
+            booking.notes = notes
+
+    return await _load_booking(db, booking_id)
+
+
+async def change_booking_room(
+    db: AsyncSession,
+    booking_id: int,
+    new_room_id: int,
+) -> Booking:
+    async with transaction(db):
+        booking = await _get_booking_for_update(db, booking_id)
+
+        if booking.status not in _EDITABLE_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot change room for this booking",
+            )
+
+        if new_room_id == booking.room_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Booking is already assigned to this room",
+            )
+
+        new_room = await _load_room_with_type(db, new_room_id)
+        await _release_booking_inventory(db, booking)
+        await _claim_inventory_for_booking(
+            db,
+            new_room_id,
+            booking.check_in,
+            booking.check_out,
+            booking.id,
+            booking.status,
+        )
+        booking.room_id = new_room_id
+        booking.total_price = _recalculate_price(new_room, booking.check_in, booking.check_out)
+
+    return await _load_booking(db, booking_id)
 
 
 async def _get_booking_for_update(db: AsyncSession, booking_id: int) -> Booking:

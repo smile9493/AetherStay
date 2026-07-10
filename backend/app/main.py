@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.database import async_session_factory
+from app.services import booking_service
 from app.tasks.auto_checkout import auto_checkout_task
 from app.tasks.hold_release import release_expired_holds_task
 
@@ -30,6 +32,11 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     scheduler.start()
+    async with async_session_factory() as db:
+        released = await booking_service.reconcile_stale_inventory(db)
+        if released:
+            import logging
+            logging.getLogger(__name__).info("Reconciled %d stale inventory row(s)", released)
     yield
     scheduler.shutdown(wait=False)
 

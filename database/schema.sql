@@ -11,9 +11,15 @@ USE aetherstay;
 CREATE TABLE IF NOT EXISTS `users` (
     `id` INT AUTO_INCREMENT COMMENT 'User primary key',
     `username` VARCHAR(64) NOT NULL UNIQUE COMMENT 'Login username',
+    `display_name` VARCHAR(64) NULL DEFAULT NULL COMMENT 'Display name',
     `password_hash` VARCHAR(255) NOT NULL COMMENT 'Argon2id password hash',
     `role` ENUM('customer', 'admin') NOT NULL DEFAULT 'customer' COMMENT 'System role',
     `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Account active flag',
+    `phone` VARCHAR(20) NULL DEFAULT NULL COMMENT 'Contact phone',
+    `email` VARCHAR(128) NULL DEFAULT NULL COMMENT 'Contact email',
+    `membership_tier` ENUM('standard', 'silver', 'gold', 'platinum') NOT NULL DEFAULT 'standard' COMMENT 'Membership level',
+    `membership_points` INT NOT NULL DEFAULT 0 COMMENT 'Loyalty points',
+    `admin_notes` VARCHAR(512) NULL DEFAULT NULL COMMENT 'Admin-only notes',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation time',
     PRIMARY KEY (`id`),
     INDEX `idx_username` (`username`)
@@ -52,6 +58,7 @@ CREATE TABLE IF NOT EXISTS `bookings` (
     `check_out` DATE NOT NULL COMMENT 'Check-out date',
     `total_price` DECIMAL(10, 2) NOT NULL COMMENT 'Total booking price',
     `status` ENUM('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled') NOT NULL DEFAULT 'pending' COMMENT 'Booking status',
+    `notes` VARCHAR(512) NULL DEFAULT NULL COMMENT 'Booking notes (admin or customer)',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Booking creation time',
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_bookings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,

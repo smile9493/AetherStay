@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.models.booking import BookingStatus
 from app.models.room import RoomStatus
-from app.models.user import UserRole
+from app.models.user import MembershipTier, UserRole
 from app.schemas.auth import UserResponse
 from app.schemas.room import BookingResponse, RoomResponse, RoomTypeResponse
 
@@ -95,8 +95,35 @@ class RoomTypeUpdate(BaseModel):
 
 class AdminUserResponse(UserResponse):
     is_active: bool
+    display_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    membership_tier: MembershipTier
+    membership_points: int
 
     model_config = {"from_attributes": True}
+
+
+class UserBookingStats(BaseModel):
+    total_bookings: int
+    completed_bookings: int
+    total_spent: float
+    last_booking_at: datetime | None = None
+
+
+class AdminUserDetailResponse(AdminUserResponse):
+    admin_notes: str | None = None
+    stats: UserBookingStats
+
+
+class AdminUserUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=64)
+    phone: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=128)
+    membership_tier: MembershipTier | None = None
+    membership_points: int | None = Field(default=None, ge=0, le=9999999)
+    is_active: bool | None = None
+    admin_notes: str | None = Field(default=None, max_length=512)
 
 
 class MessageResponse(BaseModel):
@@ -113,3 +140,22 @@ class AutoCheckoutSettingsUpdate(BaseModel):
     enabled: bool
     checkout_time: str = Field(pattern=r"^([01]\d|2[0-3]):([0-5]\d)$")
     timezone: str = "Asia/Shanghai"
+
+
+class AdminBookingCreate(BaseModel):
+    user_id: int = Field(gt=0)
+    room_id: int = Field(gt=0)
+    check_in: date
+    check_out: date
+    notes: str | None = Field(default=None, max_length=512)
+    auto_confirm: bool = True
+
+
+class AdminBookingUpdate(BaseModel):
+    check_in: date | None = None
+    check_out: date | None = None
+    notes: str | None = Field(default=None, max_length=512)
+
+
+class AdminBookingRoomChange(BaseModel):
+    room_id: int = Field(gt=0)

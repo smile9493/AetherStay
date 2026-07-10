@@ -13,6 +13,8 @@ const stats = ref({
   total_revenue: 0,
   total_rooms: 0,
   active_rooms: 0,
+  rooms_occupied_today: 0,
+  rooms_available_today: 0,
   total_users: 0,
   active_users: 0,
 })
@@ -24,15 +26,25 @@ onMounted(loadDashboardData)
 async function loadDashboardData() {
   loading.value = true
   try {
-    const [statsRes, bookingsRes] = await Promise.all([
+    const [statsRes, bookingsRes] = await Promise.allSettled([
       api.get('/admin/stats'),
       api.get<{ items: any[] }>('/admin/bookings', { params: { page: 1, page_size: 5 } }),
     ])
 
-    stats.value = statsRes.data
-    recentBookings.value = bookingsRes.data.items
-    
-  } catch (err: any) {
+    if (statsRes.status === 'fulfilled') {
+      stats.value = statsRes.value.data
+    } else {
+      ElMessage.error('获取统计数据失败，请检查管理权限或数据库迁移')
+      return
+    }
+
+    if (bookingsRes.status === 'fulfilled') {
+      recentBookings.value = bookingsRes.value.data.items
+    } else {
+      recentBookings.value = []
+      ElMessage.warning('近期订单加载失败，请确认已执行 004_booking_notes 迁移')
+    }
+  } catch {
     ElMessage.error('获取大盘数据失败，请检查您的管理权限')
   } finally {
     loading.value = false
@@ -55,13 +67,15 @@ const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'succes
 
 <template>
   <div v-loading="loading" class="admin-dashboard-page">
-    <!-- Header banner -->
-    <div class="dashboard-header-row">
-      <div class="title-cell">
+    <div class="panel-header">
+      <div class="header-icon">
+        <el-icon><TrendCharts /></el-icon>
+      </div>
+      <div class="header-info">
         <h3>控制台数据大盘</h3>
         <p>AetherStay 核心指标监控与全局客房状态分析</p>
       </div>
-      <el-button type="primary" class="refresh-btn" :icon="TrendCharts" @click="loadDashboardData">
+      <el-button type="primary" class="header-action refresh-btn" :icon="TrendCharts" @click="loadDashboardData">
         刷新实时状态
       </el-button>
     </div>
@@ -137,15 +151,16 @@ const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'succes
           </div>
           <div class="occupancy-widget-body">
             <div class="progress-container">
-              <el-progress 
-                type="dashboard" 
-                :percentage="occupancyRate" 
+              <el-progress
+                type="dashboard"
+                :percentage="occupancyRate"
                 :stroke-width="14"
                 :width="160"
+                :show-text="false"
                 :color="[
                   { color: '#10b981', percentage: 40 },
                   { color: '#6366f1', percentage: 80 },
-                  { color: '#f43f5e', percentage: 100 }
+                  { color: '#f43f5e', percentage: 100 },
                 ]"
               />
               <div class="progress-custom-label">
@@ -163,13 +178,18 @@ const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'succes
                 </div>
                 <div class="stat-pill-item">
                   <span class="dot booked"></span>
-                  <span class="lbl">在住占用</span>
-                  <span class="val">{{ stats.active_check_ins }} 间</span>
+                  <span class="lbl">今日已占</span>
+                  <span class="val">{{ stats.rooms_occupied_today }} 间</span>
                 </div>
                 <div class="stat-pill-item">
                   <span class="dot hold"></span>
-                  <span class="lbl">待付款锁房</span>
-                  <span class="val">{{ stats.pending_bookings }} 间</span>
+                  <span class="lbl">今日可售</span>
+                  <span class="val">{{ stats.rooms_available_today }} 间</span>
+                </div>
+                <div class="stat-pill-item">
+                  <span class="dot active"></span>
+                  <span class="lbl">在住订单</span>
+                  <span class="val">{{ stats.active_check_ins }} 间</span>
                 </div>
               </div>
             </div>
@@ -234,33 +254,6 @@ const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'succes
 </template>
 
 <style scoped>
-.admin-dashboard-page {
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.dashboard-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.title-cell h3 {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
-
-.title-cell p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
 .refresh-btn {
   background: var(--accent-gradient);
   border: none;
@@ -433,14 +426,26 @@ const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'succes
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 160px;
+  height: 160px;
+}
+
+.progress-container :deep(.el-progress) {
+  line-height: 1;
+}
+
+.progress-container :deep(.el-progress__text) {
+  display: none;
 }
 
 .progress-custom-label {
   position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .progress-custom-label .pct {

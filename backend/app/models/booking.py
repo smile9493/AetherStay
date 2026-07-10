@@ -33,6 +33,7 @@ class Booking(Base):
         default=BookingStatus.PENDING,
         nullable=False,
     )
+    notes: Mapped[str | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="bookings")

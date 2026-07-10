@@ -51,6 +51,7 @@ class BookingResponse(BaseModel):
     check_out: date
     total_price: Decimal
     status: BookingStatus
+    notes: str | None = None
     created_at: datetime
     held_until: datetime | None = None
     room: RoomResponse | None = None

@@ -181,6 +181,20 @@ mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
   < database/migrations/003_system_settings.sql
 ```
 
+订单备注字段（代客下单 / 编辑订单）：
+
+```bash
+mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
+  < database/migrations/004_booking_notes.sql
+```
+
+用户会员资料（等级、积分、联系方式）：
+
+```bash
+mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
+  < database/migrations/005_user_membership.sql
+```
+
 新环境由 `database/schema.sql` 自动包含上述变更。
 
 ## 测试与压测

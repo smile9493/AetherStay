@@ -1,12 +1,14 @@
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select, case
+from sqlalchemy import and_, func, select, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.booking import Booking, BookingStatus
+from app.models.inventory import DailyRoomInventory, InventoryStatus
 from app.models.room import Room, RoomStatus
 from app.models.user import User, UserRole
 from app.utils.auth import CurrentUser, RoleChecker
@@ -24,6 +26,8 @@ class DashboardStats(BaseModel):
     total_revenue: float
     total_rooms: int
     active_rooms: int
+    rooms_occupied_today: int
+    rooms_available_today: int
     total_users: int
     active_users: int
 
@@ -102,6 +106,37 @@ async def get_dashboard_stats(
     )
     us = user_stats.one()
 
+    today = date.today()
+    now = datetime.now(UTC).replace(tzinfo=None)
+    occupied_today = (
+        await db.execute(
+            select(func.count(func.distinct(DailyRoomInventory.room_id))).where(
+                DailyRoomInventory.date == today,
+                DailyRoomInventory.status.in_([InventoryStatus.BOOKED, InventoryStatus.HELD]),
+            )
+        )
+    ).scalar_one()
+
+    available_today = (
+        await db.execute(
+            select(func.count(func.distinct(DailyRoomInventory.room_id)))
+            .select_from(DailyRoomInventory)
+            .join(Room, DailyRoomInventory.room_id == Room.id)
+            .where(
+                DailyRoomInventory.date == today,
+                Room.status == RoomStatus.ACTIVE,
+                or_(
+                    DailyRoomInventory.status == InventoryStatus.AVAILABLE,
+                    and_(
+                        DailyRoomInventory.status == InventoryStatus.HELD,
+                        DailyRoomInventory.held_until.is_not(None),
+                        DailyRoomInventory.held_until < now,
+                    ),
+                ),
+            )
+        )
+    ).scalar_one()
+
     return DashboardStats(
         total_bookings=bs.total_bookings or 0,
         pending_bookings=bs.pending_bookings or 0,
@@ -110,6 +145,8 @@ async def get_dashboard_stats(
         total_revenue=float(bs.total_revenue or 0),
         total_rooms=rs.total_rooms or 0,
         active_rooms=rs.active_rooms or 0,
+        rooms_occupied_today=occupied_today or 0,
+        rooms_available_today=available_today or 0,
         total_users=us.total_users or 0,
         active_users=us.active_users or 0,
     )

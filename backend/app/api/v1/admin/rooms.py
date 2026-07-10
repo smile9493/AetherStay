@@ -89,6 +89,15 @@ async def update_room(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
 
     if data.room_number is not None:
+        if data.room_number != room.room_number:
+            existing = await db.execute(
+                select(Room).where(Room.room_number == data.room_number, Room.id != room_id)
+            )
+            if existing.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Room number already exists",
+                )
         room.room_number = data.room_number
     if data.room_type_id is not None:
         room_type = await db.get(RoomType, data.room_type_id)

@@ -50,10 +50,12 @@ def mark_held(
         record.held_until = held_until
 
 
-def mark_booked(records: list[DailyRoomInventory]) -> None:
+def mark_booked(records: list[DailyRoomInventory], booking_id: int | None = None) -> None:
     for record in records:
         record.status = InventoryStatus.BOOKED
         record.held_until = None
+        if booking_id is not None:
+            record.booking_id = booking_id
 
 
 def mark_available(records: list[DailyRoomInventory]) -> None:

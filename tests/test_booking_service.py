@@ -299,3 +299,34 @@ async def test_cancel_booking_already_checked_in():
             )
         assert exc.value.status_code == 400
         assert "Cannot cancel" in exc.value.detail or "cannot cancel" in exc.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_check_out_releases_inventory():
+    room, check_in, check_out = await _find_available_slot()
+    async with async_session_factory() as db:
+        user = await _create_user(db)
+        await db.commit()
+        user_id = user.id
+        booking = await booking_service.create_hold_booking(
+            db, user_id=user_id, room_id=room.id,
+            check_in=check_in, check_out=check_out,
+        )
+        confirmed = await booking_service.confirm_booking(db, booking.id)
+        checked_in = await booking_service.check_in_booking(db, confirmed.id)
+        records_before = await inventory_service.get_inventory_for_booking(
+            db, room.id, check_in, check_out, checked_in.id
+        )
+        assert all(r.status == InventoryStatus.BOOKED for r in records_before)
+
+        await booking_service.check_out_booking(db, checked_in.id)
+        result = await db.execute(
+            select(DailyRoomInventory).where(
+                DailyRoomInventory.room_id == room.id,
+                DailyRoomInventory.date >= check_in,
+                DailyRoomInventory.date < check_out,
+            )
+        )
+        records_after = list(result.scalars().all())
+        assert records_after
+        assert all(r.status == InventoryStatus.AVAILABLE for r in records_after)

@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
-import { Search, Refresh, Calendar, Avatar, Operation } from '@element-plus/icons-vue'
+import { Search, Refresh, Calendar, Avatar, Operation, Plus, Edit, Switch } from '@element-plus/icons-vue'
 import AdminPagination from '@/components/admin/AdminPagination.vue'
 import { usePagination, type PaginatedResult } from '@/composables/usePagination'
+
+interface UserItem {
+  id: number
+  username: string
+}
+
+interface RoomOption {
+  id: number
+  room_number: string
+  room_type?: { name: string; base_price: string }
+}
 
 interface Booking {
   id: number
@@ -14,6 +25,7 @@ interface Booking {
   check_out: string
   total_price: string
   status: string
+  notes?: string | null
   created_at: string
   room?: {
     room_number: string
@@ -22,6 +34,8 @@ interface Booking {
 }
 
 interface PaginatedBookings extends PaginatedResult<Booking> {}
+
+const EDITABLE_STATUSES = ['pending', 'confirmed', 'checked_in']
 
 const bookings = ref<Booking[]>([])
 const loading = ref(false)
@@ -33,7 +47,92 @@ const filterForm = ref({
   check_in_to: '' as string,
 })
 
-onMounted(() => loadBookings())
+const users = ref<UserItem[]>([])
+const availableRooms = ref<RoomOption[]>([])
+const roomSearchLoading = ref(false)
+
+const walkInVisible = ref(false)
+const walkInSubmitting = ref(false)
+const walkInForm = ref({
+  user_id: null as number | null,
+  check_in: '',
+  check_out: '',
+  room_id: null as number | null,
+  notes: '',
+  auto_confirm: true,
+})
+
+const editVisible = ref(false)
+const editSubmitting = ref(false)
+const editingBooking = ref<Booking | null>(null)
+const editForm = ref({
+  check_in: '',
+  check_out: '',
+  notes: '',
+})
+
+const changeRoomVisible = ref(false)
+const changeRoomSubmitting = ref(false)
+const changingBooking = ref<Booking | null>(null)
+const changeRoomForm = ref({
+  room_id: null as number | null,
+})
+
+onMounted(async () => {
+  await Promise.all([loadBookings(), loadUsers()])
+})
+
+async function loadUsers() {
+  try {
+    const { data } = await api.get<PaginatedResult<UserItem>>('/admin/users', {
+      params: { page: 1, page_size: 100 },
+    })
+    users.value = data.items
+  } catch {
+    // non-blocking
+  }
+}
+
+async function searchAvailableRooms(checkIn: string, checkOut: string) {
+  if (!checkIn || !checkOut || checkOut <= checkIn) {
+    availableRooms.value = []
+    return
+  }
+  roomSearchLoading.value = true
+  try {
+    const { data } = await api.get<RoomOption[]>('/rooms/search', {
+      params: { check_in: checkIn, check_out: checkOut },
+    })
+    availableRooms.value = data
+  } catch {
+    availableRooms.value = []
+    ElMessage.error('查询可用客房失败')
+  } finally {
+    roomSearchLoading.value = false
+  }
+}
+
+watch(
+  () => [walkInForm.value.check_in, walkInForm.value.check_out],
+  ([checkIn, checkOut]) => {
+    walkInForm.value.room_id = null
+    if (checkIn && checkOut) searchAvailableRooms(checkIn, checkOut)
+  },
+)
+
+watch(
+  () => [editForm.value.check_in, editForm.value.check_out],
+  ([checkIn, checkOut]) => {
+    if (editVisible.value && checkIn && checkOut) searchAvailableRooms(checkIn, checkOut)
+  },
+)
+
+watch(
+  () => changingBooking.value,
+  (booking) => {
+    if (booking) searchAvailableRooms(booking.check_in, booking.check_out)
+  },
+)
 
 async function loadBookings() {
   loading.value = true
@@ -53,6 +152,99 @@ async function loadBookings() {
     ElMessage.error('加载全局订单失败')
   } finally {
     loading.value = false
+  }
+}
+
+function openWalkInDialog() {
+  walkInForm.value = {
+    user_id: null,
+    check_in: '',
+    check_out: '',
+    room_id: null,
+    notes: '',
+    auto_confirm: true,
+  }
+  availableRooms.value = []
+  walkInVisible.value = true
+}
+
+async function submitWalkIn() {
+  if (!walkInForm.value.user_id || !walkInForm.value.room_id || !walkInForm.value.check_in || !walkInForm.value.check_out) {
+    ElMessage.warning('请完整填写客户、日期与客房')
+    return
+  }
+  walkInSubmitting.value = true
+  try {
+    await api.post('/admin/bookings', {
+      user_id: walkInForm.value.user_id,
+      room_id: walkInForm.value.room_id,
+      check_in: walkInForm.value.check_in,
+      check_out: walkInForm.value.check_out,
+      notes: walkInForm.value.notes || null,
+      auto_confirm: walkInForm.value.auto_confirm,
+    })
+    ElMessage.success('代客下单成功')
+    walkInVisible.value = false
+    loadBookings()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '代客下单失败')
+  } finally {
+    walkInSubmitting.value = false
+  }
+}
+
+function openEditDialog(row: Booking) {
+  editingBooking.value = row
+  editForm.value = {
+    check_in: row.check_in,
+    check_out: row.check_out,
+    notes: row.notes ?? '',
+  }
+  editVisible.value = true
+}
+
+async function submitEdit() {
+  if (!editingBooking.value) return
+  editSubmitting.value = true
+  try {
+    await api.put(`/admin/bookings/${editingBooking.value.id}`, {
+      check_in: editForm.value.check_in,
+      check_out: editForm.value.check_out,
+      notes: editForm.value.notes || null,
+    })
+    ElMessage.success('订单已更新')
+    editVisible.value = false
+    loadBookings()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '更新订单失败')
+  } finally {
+    editSubmitting.value = false
+  }
+}
+
+function openChangeRoomDialog(row: Booking) {
+  changingBooking.value = row
+  changeRoomForm.value = { room_id: null }
+  changeRoomVisible.value = true
+}
+
+async function submitChangeRoom() {
+  if (!changingBooking.value || !changeRoomForm.value.room_id) {
+    ElMessage.warning('请选择目标客房')
+    return
+  }
+  changeRoomSubmitting.value = true
+  try {
+    await api.put(`/admin/bookings/${changingBooking.value.id}/room`, {
+      room_id: changeRoomForm.value.room_id,
+    })
+    ElMessage.success('换房成功')
+    changeRoomVisible.value = false
+    loadBookings()
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.detail || '换房失败')
+  } finally {
+    changeRoomSubmitting.value = false
   }
 }
 
@@ -153,6 +345,12 @@ async function cancelOrder(id: number) {
   }
 }
 
+function roomLabel(room: RoomOption) {
+  const typeName = room.room_type?.name ?? ''
+  const price = room.room_type?.base_price ?? ''
+  return `${room.room_number}${typeName ? ` · ${typeName}` : ''}${price ? ` · ¥${price}/晚` : ''}`
+}
+
 const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'primary' | 'info' | 'danger' }> = {
   pending: { text: '待付款', type: 'warning' },
   confirmed: { text: '已确认', type: 'success' },
@@ -163,7 +361,7 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
 </script>
 
 <template>
-  <div class="admin-bookings-panel">
+  <div class="admin-bookings-panel admin-table-page">
     <div class="panel-header">
       <div class="header-icon">
         <el-icon><Operation /></el-icon>
@@ -172,9 +370,10 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
         <h3>全局订单调度中心</h3>
         <p>管理系统中所有客户生成的入住预订单，进行支付核实、入住登记及退房释放。</p>
       </div>
-      <div v-if="total > 0" class="header-stats">
-        <span class="stat-chip">共 {{ total }} 笔订单</span>
-      </div>
+      <span v-if="total > 0" class="stat-chip">共 {{ total }} 笔订单</span>
+      <el-button type="primary" class="header-action walk-in-btn" :icon="Plus" @click="openWalkInDialog">
+        代客下单
+      </el-button>
     </div>
 
     <!-- Filter Form -->
@@ -221,7 +420,7 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
         :data="bookings"
         style="width: 100%"
         class="admin-table-premium"
-        :max-height="560"
+        height="100%"
         empty-text="暂无符合条件的订单"
       >
         <el-table-column label="订单号" width="90">
@@ -268,6 +467,12 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
           </template>
         </el-table-column>
 
+        <el-table-column label="备注" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="notes-text">{{ row.notes || '—' }}</span>
+          </template>
+        </el-table-column>
+
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <span class="status-badge-inline" :class="row.status">
@@ -276,9 +481,27 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
           </template>
         </el-table-column>
 
-        <el-table-column label="调度操作" min-width="200" fixed="right">
+        <el-table-column label="调度操作" min-width="280" fixed="right">
           <template #default="{ row }">
             <div class="table-actions">
+              <el-button
+                v-if="EDITABLE_STATUSES.includes(row.status)"
+                size="small"
+                class="action-btn edit"
+                :icon="Edit"
+                @click="openEditDialog(row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                v-if="EDITABLE_STATUSES.includes(row.status)"
+                size="small"
+                class="action-btn change-room"
+                :icon="Switch"
+                @click="openChangeRoomDialog(row)"
+              >
+                换房
+              </el-button>
               <el-button
                 v-if="row.status === 'pending'"
                 type="success"
@@ -331,57 +554,133 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
         @size-change="handleSizeChange"
       />
     </div>
+
+    <!-- Walk-in booking dialog -->
+    <el-dialog v-model="walkInVisible" title="代客下单" width="520px" destroy-on-close>
+      <el-form label-width="96px">
+        <el-form-item label="客户账户" required>
+          <el-select v-model="walkInForm.user_id" placeholder="选择客户" filterable style="width: 100%">
+            <el-option
+              v-for="u in users"
+              :key="u.id"
+              :label="`${u.username} (ID ${u.id})`"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="入住日期" required>
+          <el-date-picker
+            v-model="walkInForm.check_in"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="入住日"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="退房日期" required>
+          <el-date-picker
+            v-model="walkInForm.check_out"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="退房日"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="指定客房" required>
+          <el-select
+            v-model="walkInForm.room_id"
+            placeholder="先选日期后查询可用房"
+            filterable
+            :loading="roomSearchLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="room in availableRooms"
+              :key="room.id"
+              :label="roomLabel(room)"
+              :value="room.id"
+            />
+          </el-select>
+          <span v-if="walkInForm.check_in && walkInForm.check_out" class="form-hint">
+            所选日期可订 {{ availableRooms.length }} 间（全店运营客房以房态为准，已被预订/锁定的房间不会出现在列表中）
+          </span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="walkInForm.notes" type="textarea" :rows="2" maxlength="512" show-word-limit />
+        </el-form-item>
+        <el-form-item label="直接确认">
+          <el-switch v-model="walkInForm.auto_confirm" />
+          <span class="form-hint">开启后跳过待付款，直接占用库存为已确认</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="walkInVisible = false">取消</el-button>
+        <el-button type="primary" :loading="walkInSubmitting" @click="submitWalkIn">创建订单</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Edit booking dialog -->
+    <el-dialog v-model="editVisible" title="编辑订单" width="520px" destroy-on-close>
+      <el-form label-width="96px">
+        <el-form-item label="入住日期">
+          <el-date-picker
+            v-model="editForm.check_in"
+            type="date"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="退房日期">
+          <el-date-picker
+            v-model="editForm.check_out"
+            type="date"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.notes" type="textarea" :rows="3" maxlength="512" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSubmitting" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Change room dialog -->
+    <el-dialog v-model="changeRoomVisible" title="更换客房" width="520px" destroy-on-close>
+      <p v-if="changingBooking" class="dialog-hint">
+        订单 #{{ changingBooking.id }} · {{ changingBooking.check_in }} → {{ changingBooking.check_out }}
+        · 当前 {{ changingBooking.room?.room_number ?? changingBooking.room_id }}
+      </p>
+      <el-form label-width="96px">
+        <el-form-item label="目标客房" required>
+          <el-select
+            v-model="changeRoomForm.room_id"
+            placeholder="选择可用客房"
+            filterable
+            :loading="roomSearchLoading"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="room in availableRooms.filter(r => r.id !== changingBooking?.room_id)"
+              :key="room.id"
+              :label="roomLabel(room)"
+              :value="room.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="changeRoomVisible = false">取消</el-button>
+        <el-button type="primary" :loading="changeRoomSubmitting" @click="submitChangeRoom">确认换房</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.admin-bookings-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.header-icon {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--primary-light);
-  color: var(--primary-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
-}
-
-.header-info {
-  flex: 1;
-  min-width: 200px;
-}
-
-.panel-header h3 {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--text-primary);
-}
-
-.panel-header p {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
-.header-stats {
-  margin-left: auto;
-}
-
 .stat-chip {
   font-size: 12px;
   font-weight: 600;
@@ -390,6 +689,32 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
   padding: 6px 14px;
   border-radius: 20px;
   border: 1px solid rgba(99, 102, 241, 0.15);
+  white-space: nowrap;
+}
+
+.walk-in-btn {
+  background: var(--accent-gradient);
+  border: none;
+  font-weight: 600;
+}
+
+.form-hint,
+.dialog-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dialog-hint {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--primary-light);
+  border-radius: var(--radius-sm);
+}
+
+.notes-text {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .filter-bar {
@@ -556,6 +881,8 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
 }
 
 .action-btn.pay { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; box-shadow: 0 3px 6px rgba(16, 185, 129, 0.2); }
+.action-btn.edit,
+.action-btn.change-room { background: #f8fafc; border: 1px solid #e2e8f0; color: var(--text-primary); }
 .action-btn.checkin { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; box-shadow: 0 3px 6px rgba(99, 102, 241, 0.2); }
 .action-btn.checkout { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; box-shadow: 0 3px 6px rgba(245, 158, 11, 0.2); }
 .action-btn.cancel { background: transparent; border: 1px solid #fca5a5; color: #ef4444; }

@@ -227,6 +227,9 @@ POST /bookings/{booking_id}/cancel
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/admin/bookings` | 全局订单列表（分页；`page` 默认 1，`page_size` 默认 20；支持 `status`、`check_in_from`、`check_in_to` 筛选） |
+| POST | `/admin/bookings` | 代客下单（`user_id`、`room_id`、日期、`notes`；`auto_confirm` 默认 true 直接确认） |
+| PUT | `/admin/bookings/{id}` | 编辑订单（`check_in`、`check_out`、`notes`；校验库存） |
+| PUT | `/admin/bookings/{id}/room` | 换房（同步迁移房态库存） |
 | POST | `/admin/bookings/{id}/confirm` | 确认 pending 订单 |
 | POST | `/admin/bookings/{id}/check-in` | 办理入住 |
 | POST | `/admin/bookings/{id}/check-out` | 办理退房 |
@@ -257,7 +260,9 @@ POST /bookings/{booking_id}/cancel
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/users` | 用户列表（分页：`page`、`page_size`） |
+| GET | `/admin/users` | 用户列表（分页；支持 `membership_tier` 筛选） |
+| GET | `/admin/users/{id}` | 用户详情（含消费统计、会员信息） |
+| PUT | `/admin/users/{id}` | 编辑用户（显示名、联系方式、会员等级/积分、状态、备注） |
 | POST | `/admin/users/{id}/disable` | 禁用用户 |
 
 ### 系统设置

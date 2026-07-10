@@ -36,10 +36,10 @@ async function handleLogout() {
             <el-icon><Calendar /></el-icon>
             <span>客房预订</span>
           </router-link>
-          <router-link 
-            v-if="auth.user && auth.user.role === 'customer'" 
-            to="/bookings" 
-            class="nav-item" 
+          <router-link
+            v-if="auth.user"
+            to="/bookings"
+            class="nav-item"
             :class="{ active: route.name === 'bookings' }"
           >
             <el-icon><Ticket /></el-icon>
@@ -73,7 +73,7 @@ async function handleLogout() {
                   <el-dropdown-item v-if="auth.user.role === 'admin'" @click="router.push('/admin/dashboard')">
                     <el-icon><Setting /></el-icon> 管理后台
                   </el-dropdown-item>
-                  <el-dropdown-item v-else @click="router.push('/bookings')">
+                  <el-dropdown-item @click="router.push('/bookings')">
                     <el-icon><Ticket /></el-icon> 我的订单
                   </el-dropdown-item>
                   <el-dropdown-item divided @click="handleLogout" class="logout-item">
@@ -308,6 +308,14 @@ async function handleLogout() {
 .tech-stack {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.main-content.admin-width {
+  flex: 0 0 auto;
+}
+
+.main-content.admin-width .content-wrapper {
+  min-height: auto;
 }
 
 .admin-width {

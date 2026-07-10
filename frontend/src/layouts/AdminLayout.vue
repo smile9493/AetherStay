@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { Calendar, Cpu, List, House, Setting, User, SwitchButton } from '@element-plus/icons-vue'
+import { Calendar, Cpu, List, House, Setting, User, SwitchButton, Timer } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -74,6 +74,14 @@ async function handleLogout() {
               <el-icon><User /></el-icon>
               <span>账户权限</span>
             </div>
+            <div 
+              class="menu-item" 
+              :class="{ active: route.name === 'admin-settings' }"
+              @click="router.push('/admin/settings')"
+            >
+              <el-icon><Timer /></el-icon>
+              <span>系统设置</span>
+            </div>
           </div>
 
           <!-- Bottom profile card for admin -->
@@ -99,11 +107,13 @@ async function handleLogout() {
       <!-- Main Admin Content Area -->
       <el-col :xs="24" :md="18" :lg="19" class="admin-content-col">
         <div class="admin-body-card glass-panel shadow-premium">
-          <RouterView v-slot="{ Component }">
-            <transition name="fade" mode="out-in">
-              <component :is="Component" />
-            </transition>
-          </RouterView>
+          <div class="admin-page-shell">
+            <RouterView v-slot="{ Component }">
+              <transition name="fade" mode="out-in">
+                <component :is="Component" />
+              </transition>
+            </RouterView>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -113,14 +123,26 @@ async function handleLogout() {
 <style scoped>
 .admin-layout {
   padding: 12px 0 32px;
+  --admin-panel-height: calc(100vh - 200px);
 }
 
 .admin-row {
-  align-items: stretch;
+  align-items: flex-start;
+  margin: 0 !important;
+}
+
+.admin-row :deep(.el-col) {
+  height: auto;
+  max-height: 100%;
 }
 
 .admin-sidebar-col {
   margin-bottom: 24px;
+  align-self: flex-start;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--admin-panel-height);
 }
 
 .admin-sidebar {
@@ -129,8 +151,10 @@ async function handleLogout() {
   border: 1px solid rgba(255, 255, 255, 0.4);
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
-  min-height: calc(100vh - 180px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .shadow-premium {
@@ -280,15 +304,145 @@ async function handleLogout() {
 }
 
 .admin-body-card {
-  padding: 32px;
+  padding: 24px;
   background: rgba(255, 255, 255, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  min-height: calc(100vh - 180px);
+  height: var(--admin-panel-height);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-page-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+
+.admin-page-shell :deep(.settings-page),
+.admin-page-shell :deep(.admin-dashboard-page),
+.admin-page-shell :deep(.admin-bookings-panel),
+.admin-page-shell :deep(.admin-users-panel),
+.admin-page-shell :deep(.admin-rooms-panel),
+.admin-page-shell :deep(.admin-roomtypes-panel) {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  min-height: 0;
+}
+
+.admin-page-shell :deep(.admin-table-page) {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.admin-page-shell :deep(.admin-table-page .panel-header),
+.admin-page-shell :deep(.admin-table-page .filter-bar) {
+  flex-shrink: 0;
+}
+
+.admin-page-shell :deep(.admin-table-page .table-wrapper) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-page-shell :deep(.admin-table-page .admin-table-premium) {
+  flex: 1;
+  min-height: 0;
+}
+
+.admin-page-shell :deep(.admin-dashboard-page),
+.admin-page-shell :deep(.settings-page) {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.admin-page-shell :deep(.el-row) {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.admin-page-shell :deep(.panel-header) {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-page-shell :deep(.header-info) {
+  flex: 1;
+  min-width: 200px;
+}
+
+.admin-page-shell :deep(.header-action) {
+  margin-left: auto;
+}
+
+.admin-page-shell :deep(.header-icon) {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--primary-light);
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+}
+
+.admin-page-shell :deep(.header-info h3) {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.admin-page-shell :deep(.header-info p) {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.admin-content-col {
+  min-width: 0;
+  align-self: flex-start;
+  height: var(--admin-panel-height);
 }
 
 @media (max-width: 992px) {
+  .admin-sidebar-col,
+  .admin-content-col {
+    height: auto;
+  }
+
+  .admin-sidebar-col {
+    position: static;
+  }
+
   .admin-sidebar {
-    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .admin-body-card {
+    height: auto;
+    overflow: visible;
+  }
+
+  .admin-page-shell {
+    overflow: visible;
   }
   .sidebar-menu {
     flex-direction: row;

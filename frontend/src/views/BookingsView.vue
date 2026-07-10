@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { Timer, Wallet, CircleClose, List, ArrowRight, InfoFilled, Search } from '@element-plus/icons-vue'
+import AdminPagination from '@/components/admin/AdminPagination.vue'
+import { usePagination, type PaginatedResult } from '@/composables/usePagination'
+import { Timer, Wallet, CircleClose, List, ArrowRight, InfoFilled, Search, Delete } from '@element-plus/icons-vue'
 
 interface Booking {
   id: number
@@ -21,13 +23,16 @@ interface Booking {
   }
 }
 
+interface PaginatedBookings extends PaginatedResult<Booking> {}
+
 const router = useRouter()
 const auth = useAuthStore()
 const bookings = ref<Booking[]>([])
 const loading = ref(false)
+const { currentPage, pageSize, total, pageStart, pageEnd, applyPageResult, resetPage } = usePagination(10)
 
 // Active Tab Filter
-const activeTab = ref('all')
+const activeTab = ref<'all' | 'pending' | 'confirmed' | 'active' | 'cancelled'>('all')
 
 // Timer countdown tracking
 const nowTime = ref(Date.now())
@@ -54,6 +59,11 @@ onMounted(async () => {
   }, 1000)
 })
 
+watch(activeTab, () => {
+  resetPage()
+  loadBookings()
+})
+
 onUnmounted(() => {
   if (tickerInterval) clearInterval(tickerInterval)
 })
@@ -61,13 +71,31 @@ onUnmounted(() => {
 async function loadBookings() {
   loading.value = true
   try {
-    const { data } = await api.get<Booking[]>('/bookings/my')
-    bookings.value = data
+    const { data } = await api.get<PaginatedBookings>('/bookings/my', {
+      params: {
+        tab: activeTab.value,
+        page: currentPage.value,
+        page_size: pageSize.value,
+      },
+    })
+    bookings.value = data.items
+    applyPageResult(data)
   } catch {
     ElMessage.error('加载订单失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadBookings()
+}
+
+function handleSizeChange(size: number) {
+  pageSize.value = size
+  resetPage()
+  loadBookings()
 }
 
 async function cancelBooking(id: number) {
@@ -83,6 +111,29 @@ async function cancelBooking(id: number) {
     loadBookings()
   } catch {
     // dismissed
+  }
+}
+
+async function deleteBooking(id: number) {
+  try {
+    await ElMessageBox.confirm(
+      '删除后该订单记录将从列表中永久移除，此操作不可恢复。确定删除吗？',
+      '删除订单记录',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '保留',
+        confirmButtonClass: 'el-button--danger',
+      },
+    )
+    await api.delete(`/bookings/${id}`)
+    ElMessage.success('订单记录已删除')
+    if (bookings.value.length === 1 && currentPage.value > 1) {
+      currentPage.value -= 1
+    }
+    loadBookings()
+  } catch {
+    // dismissed or failed
   }
 }
 
@@ -138,21 +189,6 @@ function getCountdownText(booking: Booking) {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-// Filters bookings based on tab selection
-const filteredBookings = computed(() => {
-  if (activeTab.value === 'all') return bookings.value
-  
-  return bookings.value.filter(booking => {
-    if (activeTab.value === 'pending') return booking.status === 'pending'
-    if (activeTab.value === 'confirmed') return booking.status === 'confirmed'
-    if (activeTab.value === 'active') {
-      return booking.status === 'checked_in' || booking.status === 'checked_out'
-    }
-    if (activeTab.value === 'cancelled') return booking.status === 'cancelled'
-    return true
-  })
-})
-
 const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'primary' | 'info' | 'danger' }> = {
   pending: { text: '待支付锁定', type: 'warning' },
   confirmed: { text: '已支付确认', type: 'success' },
@@ -182,9 +218,9 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
 
     <!-- Bookings Cards list -->
     <div v-loading="loading" class="bookings-list-container">
-      <div v-if="filteredBookings.length > 0" class="cards-stack">
+      <div v-if="bookings.length > 0" class="cards-stack">
         <div 
-          v-for="booking in filteredBookings" 
+          v-for="booking in bookings" 
           :key="booking.id" 
           class="booking-card glass-panel glass-panel-hover"
         >
@@ -279,7 +315,7 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
             </div>
           </div>
 
-          <!-- Re-book shortcut for finished/cancelled orders -->
+          <!-- Re-book / delete for finished or cancelled orders -->
           <div class="card-actions-footer" v-else-if="['checked_out', 'cancelled'].includes(booking.status)">
             <div class="hold-timer-area">
               <el-icon color="#94a3b8"><InfoFilled /></el-icon>
@@ -294,10 +330,30 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
               >
                 <el-icon><Search /></el-icon> 再次预订
               </el-button>
+              <el-button
+                type="danger"
+                plain
+                size="default"
+                class="delete-record-btn"
+                @click="deleteBooking(booking.id)"
+              >
+                <el-icon><Delete /></el-icon> 删除记录
+              </el-button>
             </div>
           </div>
         </div>
       </div>
+
+      <AdminPagination
+        v-if="total > 0"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-start="pageStart"
+        :page-end="pageEnd"
+        @page-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
 
       <!-- Empty state -->
       <div v-else class="empty-state-wrapper glass-panel">
@@ -610,6 +666,16 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
 
 .cancel-trigger-btn {
   font-weight: 500;
+}
+
+.delete-record-btn {
+  font-weight: 500;
+}
+
+.bookings-list-container :deep(.admin-pagination-footer) {
+  margin-top: 24px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .empty-state-wrapper {
