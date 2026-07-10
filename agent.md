@@ -35,12 +35,12 @@ AetherStay/
 ├── README.md                     # 项目说明与快速开始
 ├── .env.example                  # 环境变量模板（复制为 .env）
 ├── docker-compose.yml            # MySQL + 后端 + 前端
-├── Dockerfile                    # 后端镜像
+├── Dockerfile                    # 后端多阶段构建镜像
 ├── docker-entrypoint.sh          # 等待 MySQL 就绪
 │
 ├── backend/                      # FastAPI 后端
 │   ├── requirements.txt
-│   ├── run.py                    # 开发启动入口
+│   ├── run.py                    # 开发启动入口（热重载）
 │   └── app/
 │       ├── main.py               # 应用工厂、CORS、MCP 挂载
 │       ├── config.py             # pydantic-settings 配置
@@ -49,21 +49,35 @@ AetherStay/
 │       │   ├── router.py         # 路由聚合
 │       │   ├── auth.py           # 注册 / 登录 / 登出 / me
 │       │   ├── rooms.py          # 客房列表 / 搜索
-│       │   └── bookings.py       # 预订 CRUD / 取消
+│       │   ├── bookings.py       # 预订 CRUD / 取消
+│       │   ├── payments.py       # 模拟支付确认
+│       │   └── admin/            # 管理员路由
+│       │       ├── router.py     # 管理员路由聚合
+│       │       ├── bookings.py   # 全局订单、代客下单、换房
+│       │       ├── rooms.py      # 客房 CRUD
+│       │       ├── room_types.py # 房型 CRUD
+│       │       ├── users.py      # 用户管理
+│       │       ├── stats.py      # Dashboard 数据看板
+│       │       ├── inventory.py  # 房态日历矩阵
+│       │       └── settings.py   # 系统设置（自动退房）
 │       ├── models/               # SQLAlchemy ORM（禁止放业务逻辑）
 │       │   ├── user.py
 │       │   ├── room.py           # RoomType + Room
 │       │   ├── inventory.py      # DailyRoomInventory
-│       │   └── booking.py
+│       │   ├── booking.py
+│       │   └── system_setting.py
 │       ├── schemas/              # Pydantic 请求/响应模型
 │       │   ├── auth.py
-│       │   └── room.py
+│       │   ├── room.py
+│       │   └── admin.py
 │       ├── services/             # 业务逻辑层
 │       │   ├── booking_service.py
 │       │   ├── inventory_service.py
-│       │   └── transaction.py
-│       ├── tasks/
-│       │   └── hold_release.py   # APScheduler 过期 Hold 释放
+│       │   ├── transaction.py    # 事务上下文管理器
+│       │   └── settings_service.py
+│       ├── tasks/                # APScheduler 定时任务
+│       │   ├── hold_release.py   # 过期 Hold 释放（1min 扫描）
+│       │   └── auto_checkout.py  # 到点自动退房（按配置时间）
 │       └── utils/
 │           └── auth.py           # JWT、Cookie、RoleChecker
 │
@@ -71,23 +85,61 @@ AetherStay/
 │   ├── src/
 │   │   ├── api/index.ts          # Axios 实例（withCredentials）
 │   │   ├── stores/auth.ts        # Pinia 认证 Store
-│   │   ├── router/index.ts       # 路由 + 守卫
-│   │   ├── layouts/MainLayout.vue
-│   │   └── views/                # 页面组件
+│   │   ├── router/index.ts       # 路由 + 守卫（认证 / 管理员）
+│   │   ├── layouts/
+│   │   │   ├── MainLayout.vue    # C 端布局
+│   │   │   └── AdminLayout.vue   # 管理后台布局
+│   │   ├── views/                # 页面组件
+│   │   │   └── admin/            # Dashboard, bookings, rooms, types, users...
+│   │   ├── components/           # 可复用 UI 组件
+│   │   ├── composables/          # 组合式函数
+│   │   └── utils/                # 日期校验、错误处理
 │   ├── vite.config.ts            # 别名 @、API 代理
 │   ├── Dockerfile                # 构建 + Nginx
-│   └── nginx.conf
+│   └── nginx.conf                # 反向代理（含 SSE 长连接优化）
 │
 ├── database/
-│   └── schema.sql                # DDL + 种子数据
+│   ├── schema.sql                # DDL + 种子数据（7 间客房, 90 天房态）
+│   └── migrations/               # 增量迁移脚本
+│       ├── 002_room_types_content_fields.sql
+│       ├── 003_system_settings.sql
+│       ├── 004_booking_notes.sql
+│       └── 005_user_membership.sql
 │
 ├── docs/                         # 开发与论文素材文档
-│   ├── DEV.md                    # 本地开发指南
-│   ├── API.md                    # API 参考
+│   ├── DEV.md                    # 本地开发指南与故障排查
+│   ├── API.md                    # 完整 API 参考
+│   ├── DEPLOY.md                 # 生产部署与安全指南
+│   ├── MCP_GUIDE.md              # MCP 配置与 AI 对话示例
 │   └── PROJECT_NOTES.md          # 项目开发笔记（Bug / 问题 / 解决方案）
 │
-└── doc/
-    └── FastAPI 酒店系统设计.md    # 完整系统设计白皮书
+├── doc/                          # 系统设计白皮书 & 论文
+│   ├── FastAPI 酒店系统设计.md    # 完整系统设计、并发控制、索引优化
+│   ├── generate_draft.py         # 论文初稿生成脚本
+│   ├── generate_proposal.py      # 开题报告生成脚本
+│   └── docx_fonts.py             # DOCX 中文字体处理
+│
+├── scaffold/                     # CLI 脚手架（代码生成）
+│   ├── scaffold.py               # Jinja2 模板驱动
+│   ├── requirements.txt
+│   ├── README.md
+│   └── templates/                # 后端+前端代码模板
+│
+└── tests/                        # 测试
+    ├── requirements-dev.txt      # pytest, httpx, aiosqlite, locust
+    ├── conftest.py               # pytest fixtures（SQLite 内存库）
+    ├── test_booking_service.py   # Hold-then-Confirm 状态机测试
+    ├── test_auth_utils.py        # 认证工具函数测试
+    ├── test_user_bookings.py     # 用户端订单 CRUD 测试
+    ├── test_admin_bookings.py    # 管理员订单管理测试
+    ├── test_admin_rooms.py       # 客房 CRUD 测试
+    ├── test_admin_users.py       # 用户管理测试
+    ├── test_admin_stats.py       # Dashboard 统计测试
+    ├── test_auto_checkout.py     # 自动退房测试
+    └── load/                     # Locust 并发压测
+        ├── locustfile.py         # 防超卖 + 混合搜索场景
+        ├── README.md
+        └── verify_no_oversell.sql
 ```
 
 ## 架构分层
@@ -105,13 +157,13 @@ AetherStay/
   Depends (Auth/RBAC)      ← utils/auth.py
         │
         ▼
-  Services (业务逻辑)       ← services/（预订锁、状态机等）
+  Services (业务逻辑)       ← services/（预订锁、状态机、设置等）
         │
         ▼
   SQLAlchemy Async ORM     ← models/
         │
         ▼
-  MySQL 8.0
+  MySQL 8.0                ← InnoDB Row Lock
 ```
 
 **强制规则**：Router 层只做参数校验与响应封装；复杂业务逻辑必须放在 `services/`，不得直接堆在路由函数中。
@@ -139,6 +191,20 @@ AetherStay/
 #### 路由注册
 
 在 `backend/app/api/v1/router.py` 中通过 `api_router.include_router()` 注册新模块。
+
+#### 事务管理
+
+复杂业务操作（如创建预订、代客下单、换房）使用 `services/transaction.py` 提供的 `transaction(db)` 上下文管理器：
+
+```python
+from app.services.transaction import transaction
+
+async with transaction(db) as tx:
+    # 所有 DB 操作在统一事务内执行
+    tx_result = await ...
+```
+
+在开启新事务前会自动 `rollback()` 清理 FastAPI Depends 产生的隐式事务。
 
 #### 认证与权限
 
@@ -177,6 +243,7 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 
 - 使用 `await db.execute()` + `select()`，**禁止**旧式 `db.query()`
 - 关系加载用 `selectinload()` 避免 N+1
+- 测试环境使用 `aiosqlite` 内存库（`conftest.py` 自动配置）
 
 #### 新增 API 模块步骤
 
@@ -188,11 +255,13 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 6. 更新 `database/schema.sql`（若有表结构变更）
 7. 前端 `api/`、`views/`、`router/` 同步更新
 
+> **提示**：可使用 `python scaffold/scaffold.py gen api <name>` 自动生成 model + schema + service + router
+
 #### MCP 双模发布
 
 - 带 `operation_id` 的路由会自动被 FastAPI-MCP 转为 Tool
 - Tool 名称 = `operation_id`，描述 = 函数 docstring
-- 当前已暴露：`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`
+- 当前已暴露：`login`, `get_available_rooms`, `create_booking`, `get_booking`, `cancel_booking`, `confirm_booking_payment`
 
 ### 前端
 
@@ -209,17 +278,20 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 
 | 目录 | 职责 |
 |------|------|
-| `api/` | Axios 封装，按业务域拆分（待扩展） |
+| `api/` | Axios 封装 |
 | `stores/` | Pinia 全局状态 |
 | `views/` | 页面级组件 |
-| `layouts/` | 布局骨架 |
+| `layouts/` | 布局骨架（MainLayout + AdminLayout） |
 | `components/` | 可复用 UI 组件 |
-| `types/` | TypeScript 类型（待扩展，与后端 Schema 对齐） |
+| `composables/` | 组合式函数（如 `usePagination`） |
+| `utils/` | 工具函数（日期校验、错误处理） |
 
 #### 新增页面步骤
 
 1. `views/` 创建页面组件
-2. `router/index.ts` 添加路由（需登录则设 `meta: { requiresAuth: true }`）
+2. `router/index.ts` 添加路由
+   - 需登录：`meta: { requiresAuth: true }`
+   - 需管理员：`meta: { requiresAuth: true, requiresAdmin: true }`
 3. `layouts/MainLayout.vue` 导航菜单添加链接
 4. 如需新 API，在 `api/` 中封装
 
@@ -253,11 +325,12 @@ Booking 1──N DailyRoomInventory (via booking_id)
 
 | 表 | 用途 |
 |----|------|
-| `users` | 用户凭证与角色（customer / admin） |
-| `room_types` | 房型静态属性（名称、基准价、容量） |
+| `users` | 用户凭证与角色（customer / admin），含会员等级、积分 |
+| `room_types` | 房型静态属性（名称、基准价、容量、描述、设施） |
 | `rooms` | 物理客房（门牌号、上下架状态） |
 | `daily_room_inventories` | 每日房态（available / held / booked / maintenance） |
-| `bookings` | 订单（日期、价格、状态机） |
+| `bookings` | 订单（日期、价格、状态机、备注） |
+| `system_settings` | 键值对配置（自动退房开关/时间） |
 
 ### 预订状态机
 
@@ -267,6 +340,12 @@ pending → confirmed → checked_in → checked_out
    └→ cancelled ←┘
 ```
 
+- `pending`：创建 Hold 锁房后的初始状态
+- `confirmed`：用户支付确认 或 管理员代客下单（auto_confirm=true）
+- `checked_in`：管理员前台办理入住
+- `checked_out`：管理员手动退房 或 自动退房（定时任务按配置时间执行）
+- `cancelled`：用户取消 或 管理员取消（释放库存）
+
 ### 房态 Hold-then-Confirm（已实现）
 
 ```
@@ -274,14 +353,16 @@ available → held (15min TTL) → booked
                 └→ available (超时释放 / 取消)
 ```
 
-使用 `SELECT ... FOR UPDATE NOWAIT` 非阻塞悲观锁；APScheduler 每分钟扫描过期 Hold。
+- 使用 `SELECT ... FOR UPDATE NOWAIT` 非阻塞悲观锁
+- APScheduler 每分钟扫描过期 Hold 并释放
+- 搜索接口对过期 held 视同 available
 
 ## 角色权限
 
 | 角色 | 权限 |
 |------|------|
-| `customer` | 浏览客房、搜索、预订、查看/取消自己的订单 |
-| `admin` | 全部 customer 权限 + `/admin/*` 管理端点（订单/客房/房型/用户） |
+| `customer` | 浏览客房、搜索、预订、支付、查看/取消自己的订单 |
+| `admin` | 全部 customer 权限 + `/admin/*` 管理端点（订单/客房/房型/用户/Dashboard/房态日历/系统设置） |
 
 ## API 端点一览
 
@@ -305,35 +386,51 @@ available → held (15min TTL) → booked
 
 | 方法 | 路径 | 认证 | MCP | 说明 |
 |------|------|------|-----|------|
-| POST | `/` | 是 | `create_booking` | 创建预订 |
-| GET | `/my` | 是 | — | 我的订单列表 |
+| POST | `/` | 是 | `create_booking` | 创建预订（Hold 锁房） |
+| GET | `/my` | 是 | — | 我的订单列表（分页 + 状态 Tab 筛选） |
 | GET | `/{id}` | 是 | `get_booking` | 订单详情 |
 | POST | `/{id}/cancel` | 是 | `cancel_booking` | 取消订单并释放房态 |
+| DELETE | `/{id}` | 是 | — | 删除订单（仅 cancelled/checked_out） |
 
 ### 支付 `/api/v1`
 
 | 方法 | 路径 | 认证 | MCP | 说明 |
 |------|------|------|-----|------|
-| POST | `/bookings/{id}/pay` | 是 | `confirm_booking_payment` | 模拟支付确认 |
+| POST | `/bookings/{id}/pay` | 是 | `confirm_booking_payment` | 模拟支付确认（Hold→Confirmed） |
 
 ### 管理员 `/api/v1/admin`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/bookings` | 全局订单 |
-| POST | `/bookings/{id}/confirm` | 确认订单 |
-| POST | `/bookings/{id}/check-in` | 入住 |
-| POST | `/bookings/{id}/check-out` | 退房 |
-| GET/POST/PUT | `/rooms`, `/room-types` | 客房与房型管理 |
-| GET | `/users` | 用户列表 |
+| GET | `/stats` | Dashboard 数据看板（订单数/营收/入住率） |
+| GET | `/bookings` | 全局订单列表（分页 + 状态/日期筛选） |
+| POST | `/bookings` | 代客下单（auto_confirm 直接确认） |
+| PUT | `/bookings/{id}` | 编辑订单（日期/备注） |
+| PUT | `/bookings/{id}/room` | 换房（同步迁移房态） |
+| POST | `/bookings/{id}/confirm` | 确认 pending 订单 |
+| POST | `/bookings/{id}/check-in` | 办理入住 |
+| POST | `/bookings/{id}/check-out` | 办理退房 |
+| DELETE | `/bookings/{id}` | 删除订单（仅 cancelled/checked_out） |
+| GET | `/rooms` | 客房列表（含 inactive，分页） |
+| POST | `/rooms` | 新增客房 + 生成 90 天房态 |
+| PUT | `/rooms/{id}` | 更新客房 |
+| GET | `/room-types` | 房型列表（分页） |
+| POST | `/room-types` | 新增房型 |
+| PUT | `/room-types/{id}` | 更新房型 |
+| GET | `/inventory` | 房态日历矩阵（分页 + 日期窗口） |
+| GET | `/users` | 用户列表（支持会员等级筛选，分页） |
+| GET | `/users/{id}` | 用户详情（含消费统计、会员信息） |
+| PUT | `/users/{id}` | 编辑用户（显示名、联系方式、会员等级/积分、状态、备注） |
 | POST | `/users/{id}/disable` | 禁用用户 |
+| GET | `/settings/auto-checkout` | 获取自动退房配置 |
+| PUT | `/settings/auto-checkout` | 更新自动退房配置 |
 
 ## 编码原则
 
 AI Agent 及开发者在修改代码时必须遵守：
 
 1. **最小改动** — 只改与任务相关的文件，不重构无关代码
-2. **复用现有抽象** — 扩展 `RoleChecker`、`get_db` 等，不重复造轮子
+2. **复用现有抽象** — 扩展 `RoleChecker`、`get_db`、`transaction(db)` 等，不重复造轮子
 3. **匹配项目风格** — 命名、分层、import 顺序与现有代码一致
 4. **不写废话注释** — 仅注释非显而易见的业务逻辑
 5. **不提交密钥** — `.env` 不入库，生产 `SECRET_KEY` 必须替换
@@ -406,6 +503,11 @@ npm install
 npm run dev                         # 开发 → :5173
 npm run build                       # 生产构建
 
+# ── 测试 ──
+pip install -r tests/requirements-dev.txt
+pytest tests/ -v                    # 单元/集成测试（SQLite 内存库）
+locust -f tests/load/locustfile.py --host=http://localhost:8000  # 并发压测
+
 # ── 验证 ──
 curl http://localhost:8000/health
 curl http://localhost:8000/api/v1/rooms
@@ -423,12 +525,13 @@ cp .env.example .env
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `DATABASE_URL` | MySQL 异步连接串 | `mysql+aiomysql://...@localhost:3307/aetherstay` |
-| `SECRET_KEY` | JWT 签名密钥 | 必须替换 |
+| `SECRET_KEY` | JWT 签名密钥 | 🚨 **必须替换** |
 | `CORS_ORIGINS` | 允许的前端源（JSON 数组） | `["http://localhost:5173"]` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access Token 有效期 | `15` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh Token 有效期 | `7` |
 | `HOLD_TTL_MINUTES` | 预订 Hold 超时（分钟） | `15` |
 | `HOLD_RELEASE_INTERVAL_MINUTES` | 过期 Hold 扫描间隔（分钟） | `1` |
+| `COOKIE_SECURE` | Cookie Secure 标志（HTTPS 必填 true） | `false` |
 
 配置加载：`backend/app/config.py` 自动读取项目根目录 `.env`。
 
@@ -437,10 +540,10 @@ cp .env.example .env
 | 阶段 | 周期 | 后端 | 前端 | 状态 |
 |------|------|------|------|------|
 | 脚手架 | 第 1 周 | 项目基线、ORM、基础 API | Vue 基线、登录/预订页面 | ✅ 完成 |
-| 核心逻辑 | 第 2-3 周 | 悲观锁、Hold 状态机、支付确认 | 预订链路联调 | ✅ 完成 |
-| 管理后台 | 第 4-5 周 | 管理员 API、定时释放任务 | 管理工作台 | ✅ 完成 |
-| 压测优化 | 第 6 周 | Locust 压测、索引调优、pytest | E2E 测试 | 🔄 进行中 |
-| 部署交付 | 第 7 周 | Docker 生产镜像、Nginx 调优 | 部署文档 | 🔲 待开发 |
+| 核心逻辑 | 第 2-3 周 | 悲观锁、Hold 状态机、支付确认、过期释放 | 预订链路联调 | ✅ 完成 |
+| 管理后台 | 第 4-5 周 | 管理员 API、定时释放/退房、CLI 脚手架 | 管理工作台、首页改版 | ✅ 完成 |
+| 压测优化 | 第 6 周 | Locust 压测、索引调优、55+ pytest | E2E 验证 | ✅ 完成 |
+| 部署交付 | 第 7 周 | Docker 生产镜像、Nginx 调优 | 部署文档、API 文档完善 | ✅ 完成 |
 
 ## 参考文档
 
@@ -448,6 +551,10 @@ cp .env.example .env
 |------|------|
 | `doc/FastAPI 酒店系统设计.md` | 完整架构设计、并发控制、索引优化、Nginx 配置 |
 | `docs/DEV.md` | 本地开发流程与故障排查 |
+| `docs/DEPLOY.md` | 生产环境部署与安全指南 |
 | `docs/API.md` | API 请求/响应示例 |
+| `docs/MCP_GUIDE.md` | MCP 配置与 AI 对话示例 |
 | `docs/PROJECT_NOTES.md` | 开发笔记：Bug、技术难点、解决方案（论文实现章节素材） |
+| `scaffold/README.md` | CLI 脚手架工具使用说明 |
+| `tests/load/README.md` | Locust 并发压测说明 |
 | `README.md` | 项目概览与快速开始 |

@@ -233,6 +233,55 @@ POST /bookings/{booking_id}/cancel
 | POST | `/admin/bookings/{id}/confirm` | 确认 pending 订单 |
 | POST | `/admin/bookings/{id}/check-in` | 办理入住 |
 | POST | `/admin/bookings/{id}/check-out` | 办理退房 |
+| DELETE | `/admin/bookings/{id}` | 删除订单（仅 cancelled/checked_out 状态，回收 booking_id） |
+
+#### 代客下单
+
+```
+POST /admin/bookings
+```
+
+**请求体：**
+```json
+{
+  "user_id": 1,
+  "room_id": 2,
+  "check_in": "2026-08-01",
+  "check_out": "2026-08-03",
+  "notes": "靠近电梯，高楼层",
+  "auto_confirm": true
+}
+```
+
+**响应 `201`：**
+```json
+{
+  "id": 10,
+  "user_id": 1,
+  "room_id": 2,
+  "check_in": "2026-08-01",
+  "check_out": "2026-08-03",
+  "total_price": "998.00",
+  "status": "confirmed",
+  "notes": "靠近电梯，高楼层",
+  "created_at": "2026-07-10T10:00:00"
+}
+```
+
+#### 换房
+
+```
+PUT /admin/bookings/{id}/room
+```
+
+**请求体：**
+```json
+{
+  "new_room_id": 5
+}
+```
+
+自动释放原房间库存，锁定新房间库存（同步迁移所有日期）。
 
 ### 客房管理
 
@@ -242,6 +291,22 @@ POST /bookings/{booking_id}/cancel
 | POST | `/admin/rooms` | 新增客房并生成 90 天房态 |
 | PUT | `/admin/rooms/{id}` | 更新门牌号/房型/状态 |
 
+#### 新增客房
+
+```
+POST /admin/rooms
+```
+
+**请求体：**
+```json
+{
+  "room_number": "105",
+  "room_type_id": 1
+}
+```
+
+创建后自动为该房间生成 90 天 `daily_room_inventories` 记录（状态 `available`）。
+
 ### 房型管理
 
 | 方法 | 路径 | 说明 |
@@ -250,11 +315,97 @@ POST /bookings/{booking_id}/cancel
 | POST | `/admin/room-types` | 新增房型 |
 | PUT | `/admin/room-types/{id}` | 更新房型 |
 
+#### 房型列表
+
+```
+GET /admin/room-types
+```
+
+**响应 `200`：**
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "name": "Standard Twin",
+      "base_price": "299.00",
+      "capacity": 2,
+      "total_rooms": 3,
+      "description": "两张单人床，适合商务出行",
+      "amenities": "WiFi,空调,电视",
+      "image_url": null
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "page_size": 20
+}
+```
+
 ### 房态日历
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/inventory` | 房态矩阵（按房间分页：`page`、`page_size` 默认 10） |
+| GET | `/admin/inventory` | 房态矩阵（按房间分页：`page`、`page_size` 默认 10；`start_date`、`end_date` 默认 14 天窗口） |
+
+#### 房态矩阵
+
+```
+GET /admin/inventory?page=1&page_size=10&start_date=2026-08-01&end_date=2026-08-14
+```
+
+**响应 `200`：**
+```json
+{
+  "items": [
+    {
+      "room": {"id": 1, "room_number": "101", "room_type": {"name": "Standard Twin"}},
+      "dates": [
+        {"date": "2026-08-01", "status": "available"},
+        {"date": "2026-08-02", "status": "available"},
+        {"date": "2026-08-03", "status": "booked", "booking_id": 5},
+        {"date": "2026-08-04", "status": "booked", "booking_id": 5},
+        {"date": "2026-08-05", "status": "available"},
+        {"date": "2026-08-06", "status": "maintenance"}
+      ]
+    }
+  ],
+  "total": 7,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+| `status` 值 | 含义 |
+|-------------|------|
+| `available` | 可预订 |
+| `held` | 被锁定（等待支付，含 `held_until` 截止时间） |
+| `booked` | 已确认预订 |
+| `maintenance` | 维护中（不可预订） |
+
+### 数据看板
+
+```
+GET /admin/stats
+```
+
+**响应 `200`：**
+```json
+{
+  "total_bookings": 25,
+  "total_revenue": "14950.00",
+  "occupancy_rate": 0.68,
+  "today_check_ins": 3,
+  "today_check_outs": 2,
+  "pending_confirmations": 1,
+  "bookings_by_status": {
+    "confirmed": 10,
+    "checked_in": 5,
+    "checked_out": 8,
+    "cancelled": 2
+  }
+}
+```
 
 ### 用户管理
 
@@ -265,6 +416,30 @@ POST /bookings/{booking_id}/cancel
 | PUT | `/admin/users/{id}` | 编辑用户（显示名、联系方式、会员等级/积分、状态、备注） |
 | POST | `/admin/users/{id}/disable` | 禁用用户 |
 
+#### 用户详情
+
+```
+GET /admin/users/1
+```
+
+**响应 `200`：**
+```json
+{
+  "id": 1,
+  "username": "alice",
+  "display_name": "Alice",
+  "role": "customer",
+  "is_active": true,
+  "email": "alice@example.com",
+  "phone": "13800138000",
+  "membership_tier": "gold",
+  "membership_points": 1200,
+  "total_spent": "5980.00",
+  "booking_count": 12,
+  "created_at": "2026-07-01T08:00:00"
+}
+```
+
 ### 系统设置
 
 | 方法 | 路径 | 说明 |
@@ -272,8 +447,13 @@ POST /bookings/{booking_id}/cancel
 | GET | `/admin/settings/auto-checkout` | 获取自动退房配置（开关、触发时间、时区） |
 | PUT | `/admin/settings/auto-checkout` | 更新自动退房配置（仅 `checked_in` 订单到期自动退房） |
 
-请求体示例（PUT）：
+#### 获取配置
 
+```
+GET /admin/settings/auto-checkout
+```
+
+**响应 `200`：**
 ```json
 {
   "enabled": true,
@@ -281,6 +461,23 @@ POST /bookings/{booking_id}/cancel
   "timezone": "Asia/Shanghai"
 }
 ```
+
+#### 更新配置
+
+```
+PUT /admin/settings/auto-checkout
+```
+
+**请求体：**
+```json
+{
+  "enabled": true,
+  "checkout_time": "14:00",
+  "timezone": "Asia/Shanghai"
+}
+```
+
+自动退房逻辑：APScheduler 每分钟扫描 `checked_in` 订单，在退房日当天达到 `checkout_time` 后自动将状态变更为 `checked_out`。
 
 默认管理员：`admin` / `admin1234`
 

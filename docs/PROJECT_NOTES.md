@@ -307,6 +307,19 @@
 
 ---
 
+---
+
+### [2026-07-10] WPS 在 Ubuntu 上显示黑块乱码（字体缺失）
+
+**模块**：doc / DOCX 生成  
+**阶段**：第 7 周 — 论文文档生成  
+**现象**：生成的 `.docx` 在 WPS for Linux 中打开，标题和封面显示黑色方块乱码，但表格正文显示正常。  
+**原因**：Docx 中 `w:eastAsia` 字体名为 Windows 专有字体（宋体/黑体/仿宋），Ubuntu 未安装这些字体。系统 fontconfig 虽有 Noto CJK 别名，但 WPS 直接按 OOXML 中字体名查找，无法回退。  
+**解决**：新增 `doc/docx_fonts.py` 共享模块，默认使用 Linux 已安装的 `Noto Serif CJK SC` 和 `Noto Sans CJK SC`；设置 `DOCX_FONTS=windows` 可切换回 Windows 字体名。同时刷新 `w:ascii`/`w:hAnsi`/`w:cs` 属性确保 WPS 完全识别。  
+**论文可用点**：跨平台文档生成的字体系列工程兼容性；OOXML 标准中 `w:eastAsia` 与 fontconfig 回退机制的关系说明。
+
+---
+
 ## 待记录（开发过程中补充）
 
 - [x] Locust 并发压测结果（第 6 周）
@@ -315,4 +328,4 @@
 - [x] 管理后台与 C 端预订流程（第 4-5 周）
 - [x] CLI 脚手架工具（第 5 周）
 - [x] pytest 预订核心路径测试（第 6 周）
-- [ ] Nginx MCP 长连接代理调优（第 7 周）
+- [x] Nginx MCP 长连接代理调优（第 7 周）
