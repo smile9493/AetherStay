@@ -24,6 +24,7 @@ const router = createRouter({
             { path: 'room-types', name: 'admin-room-types', component: () => import('@/views/admin/AdminRoomTypesView.vue') },
             { path: 'inventory', name: 'admin-inventory', component: () => import('@/views/admin/InventoryCalendarView.vue') },
             { path: 'users', name: 'admin-users', component: () => import('@/views/admin/AdminUsersView.vue') },
+            { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/AdminSettingsView.vue') },
           ]
         }
       ],

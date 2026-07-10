@@ -56,3 +56,15 @@ class AdminUserResponse(UserResponse):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class AutoCheckoutSettingsResponse(BaseModel):
+    enabled: bool
+    checkout_time: str
+    timezone: str = "Asia/Shanghai"
+
+
+class AutoCheckoutSettingsUpdate(BaseModel):
+    enabled: bool
+    checkout_time: str = Field(pattern=r"^([01]\d|2[0-3]):([0-5]\d)$")
+    timezone: str = "Asia/Shanghai"

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.tasks.auto_checkout import auto_checkout_task
 from app.tasks.hold_release import release_expired_holds_task
 
 settings = get_settings()
@@ -19,6 +20,13 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=settings.HOLD_RELEASE_INTERVAL_MINUTES,
         id="release_expired_holds",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        auto_checkout_task,
+        "interval",
+        minutes=1,
+        id="auto_checkout",
         replace_existing=True,
     )
     scheduler.start()

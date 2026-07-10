@@ -294,6 +294,19 @@
 
 ---
 
+### [2026-07-10] 到点自动退房（管理台可配置）
+
+**背景**：原退房仅支持管理员在订单调度页手动办理；`checked_in` 订单在退房日过后可能长期滞留。
+
+**实现**：
+1. `system_settings` 表存储 `auto_checkout_enabled`、`auto_checkout_time`（默认 12:00）、`timezone`（Asia/Shanghai）。
+2. APScheduler 每分钟执行 `auto_checkout_task`：仅对 `checked_in` 且 `check_out <= today` 的订单，在退房日当天达到配置时间后自动 `checked_out`；`check_out < today` 补跑防漏。
+3. 管理台「系统设置」页可开关并修改触发时间；`GET/PUT /admin/settings/auto-checkout`。
+
+**迁移**：`database/migrations/003_system_settings.sql`
+
+---
+
 ## 待记录（开发过程中补充）
 
 - [x] Locust 并发压测结果（第 6 周）

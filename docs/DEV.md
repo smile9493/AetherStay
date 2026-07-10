@@ -174,6 +174,13 @@ mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
   < database/migrations/002_room_types_content_fields.sql
 ```
 
+系统设置表（自动退房等运行时配置）：
+
+```bash
+mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
+  < database/migrations/003_system_settings.sql
+```
+
 新环境由 `database/schema.sql` 自动包含上述变更。
 
 ## 测试与压测

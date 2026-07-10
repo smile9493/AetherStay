@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
@@ -239,6 +240,65 @@ async def check_out_booking(db: AsyncSession, booking_id: int) -> Booking:
         booking.status = BookingStatus.CHECKED_OUT
 
     return await _load_booking(db, booking_id)
+
+
+def is_checkout_due(
+    check_out: date,
+    now: datetime,
+    checkout_time: str,
+    timezone_name: str,
+) -> bool:
+    """Return True if a checked-in booking should be auto-checked-out."""
+    tz = ZoneInfo(timezone_name)
+    aware_now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    local_now = aware_now.astimezone(tz)
+    today = local_now.date()
+
+    if check_out < today:
+        return True
+    if check_out > today:
+        return False
+
+    hour, minute = map(int, checkout_time.split(":"))
+    trigger = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return local_now >= trigger
+
+
+async def auto_checkout_due_bookings(
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    checkout_time: str,
+    timezone_name: str,
+) -> int:
+    """Auto check out checked-in bookings past their checkout date/time."""
+    if now is None:
+        now = datetime.now(UTC)
+
+    tz = ZoneInfo(timezone_name)
+    aware_now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    today = aware_now.astimezone(tz).date()
+
+    result = await db.execute(
+        select(Booking.id, Booking.check_out).where(
+            Booking.status == BookingStatus.CHECKED_IN,
+            Booking.check_out <= today,
+        )
+    )
+    candidates = result.all()
+    processed = 0
+    checked_out_ids: list[int] = []
+
+    for booking_id, check_out in candidates:
+        if not is_checkout_due(check_out, now, checkout_time, timezone_name):
+            continue
+        await check_out_booking(db, booking_id)
+        processed += 1
+        checked_out_ids.append(booking_id)
+
+    if checked_out_ids:
+        logger.info("Auto checked out %d booking(s): %s", processed, checked_out_ids)
+    return processed
 
 
 async def release_expired_holds(db: AsyncSession) -> int:

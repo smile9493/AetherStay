@@ -78,6 +78,11 @@ async def setup_database():
             is_active=True,
         )
         session.add(admin)
+        await session.flush()
+
+        from app.services.settings_service import seed_default_settings
+        await seed_default_settings(session)
+
         await session.commit()
 
     yield

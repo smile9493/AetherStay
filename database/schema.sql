@@ -74,6 +74,14 @@ CREATE TABLE IF NOT EXISTS `daily_room_inventories` (
     CONSTRAINT `fk_dri_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Daily room inventory';
 
+-- 6. System Settings (admin-configurable runtime settings)
+CREATE TABLE IF NOT EXISTS `system_settings` (
+    `key` VARCHAR(64) NOT NULL COMMENT 'Setting key',
+    `value` VARCHAR(512) NOT NULL COMMENT 'Setting value',
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Last update time',
+    PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Runtime system settings';
+
 -- Seed data
 INSERT INTO `room_types` (`name`, `base_price`, `capacity`, `total_rooms`, `description`, `amenities`, `image_url`) VALUES
     ('Standard Twin', 299.00, 2, 10, '舒适的标准双床房，配备两张单人床，适合商务出差或亲友同行。', 'WiFi,空调,电视,吹风机', 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80'),
@@ -102,3 +110,8 @@ CROSS JOIN (
 -- Default admin (username: admin, password: admin1234)
 INSERT INTO `users` (`username`, `password_hash`, `role`, `is_active`) VALUES
     ('admin', '$argon2id$v=19$m=65536,t=3,p=4$iVFqzRkjxHjv/b+XsjYmJA$SkLNfEfOFdTnyzO7T/NIkVxZz9N2D7T1hQWXryqmTu0', 'admin', 1);
+
+INSERT INTO `system_settings` (`key`, `value`) VALUES
+    ('auto_checkout_enabled', 'true'),
+    ('auto_checkout_time', '12:00'),
+    ('timezone', 'Asia/Shanghai');

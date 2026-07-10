@@ -254,6 +254,23 @@ POST /bookings/{booking_id}/cancel
 | GET | `/admin/users` | 用户列表 |
 | POST | `/admin/users/{id}/disable` | 禁用用户 |
 
+### 系统设置
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/settings/auto-checkout` | 获取自动退房配置（开关、触发时间、时区） |
+| PUT | `/admin/settings/auto-checkout` | 更新自动退房配置（仅 `checked_in` 订单到期自动退房） |
+
+请求体示例（PUT）：
+
+```json
+{
+  "enabled": true,
+  "checkout_time": "12:00",
+  "timezone": "Asia/Shanghai"
+}
+```
+
 默认管理员：`admin` / `admin1234`
 
 ## 状态码
