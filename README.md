@@ -122,7 +122,7 @@ cp .env.example .env
 |------|------|
 | [agent.md](agent.md) | AI Agent 开发规范、编码约定、架构分层 |
 | [docs/DEV.md](docs/DEV.md) | 本地开发流程、故障排查 |
-| [docs/API.md](docs/API.md) | API 请求/响应示例 |
+| [docs/PROJECT_NOTES.md](docs/PROJECT_NOTES.md) | 开发笔记：Bug、难点与解决方案（论文素材） |
 | [doc/FastAPI 酒店系统设计.md](doc/FastAPI%20酒店系统设计.md) | 完整系统设计白皮书 |
 
 ## 开发计划

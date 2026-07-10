@@ -58,7 +58,12 @@ AetherStay/
 │       ├── schemas/              # Pydantic 请求/响应模型
 │       │   ├── auth.py
 │       │   └── room.py
-│       ├── services/             # 业务逻辑层（待扩展）
+│       ├── services/             # 业务逻辑层
+│       │   ├── booking_service.py
+│       │   ├── inventory_service.py
+│       │   └── transaction.py
+│       ├── tasks/
+│       │   └── hold_release.py   # APScheduler 过期 Hold 释放
 │       └── utils/
 │           └── auth.py           # JWT、Cookie、RoleChecker
 │
@@ -75,6 +80,11 @@ AetherStay/
 │
 ├── database/
 │   └── schema.sql                # DDL + 种子数据
+│
+├── docs/                         # 开发与论文素材文档
+│   ├── DEV.md                    # 本地开发指南
+│   ├── API.md                    # API 参考
+│   └── PROJECT_NOTES.md          # 项目开发笔记（Bug / 问题 / 解决方案）
 │
 └── doc/
     └── FastAPI 酒店系统设计.md    # 完整系统设计白皮书
@@ -249,7 +259,7 @@ Booking 1──N DailyRoomInventory (via booking_id)
 | `daily_room_inventories` | 每日房态（available / held / booked / maintenance） |
 | `bookings` | 订单（日期、价格、状态机） |
 
-### 预订状态机（目标设计）
+### 预订状态机
 
 ```
 pending → confirmed → checked_in → checked_out
@@ -257,21 +267,21 @@ pending → confirmed → checked_in → checked_out
    └→ cancelled ←┘
 ```
 
-### 房态 Hold-then-Confirm（第 2-3 周实现）
+### 房态 Hold-then-Confirm（已实现）
 
 ```
 available → held (15min TTL) → booked
-                └→ available (超时释放)
+                └→ available (超时释放 / 取消)
 ```
 
-实现时使用 `SELECT ... FOR UPDATE NOWAIT` 非阻塞悲观锁，详见设计文档第五章。
+使用 `SELECT ... FOR UPDATE NOWAIT` 非阻塞悲观锁；APScheduler 每分钟扫描过期 Hold。
 
 ## 角色权限
 
 | 角色 | 权限 |
 |------|------|
 | `customer` | 浏览客房、搜索、预订、查看/取消自己的订单 |
-| `admin` | 全部 customer 权限 + 房型管理、全局订单、用户管理（待实现） |
+| `admin` | 全部 customer 权限 + `/admin/*` 管理端点（订单/客房/房型/用户） |
 
 ## API 端点一览
 
@@ -298,7 +308,25 @@ available → held (15min TTL) → booked
 | POST | `/` | 是 | `create_booking` | 创建预订 |
 | GET | `/my` | 是 | — | 我的订单列表 |
 | GET | `/{id}` | 是 | `get_booking` | 订单详情 |
-| POST | `/{id}/cancel` | 是 | `cancel_booking` | 取消订单 |
+| POST | `/{id}/cancel` | 是 | `cancel_booking` | 取消订单并释放房态 |
+
+### 支付 `/api/v1`
+
+| 方法 | 路径 | 认证 | MCP | 说明 |
+|------|------|------|-----|------|
+| POST | `/bookings/{id}/pay` | 是 | `confirm_booking_payment` | 模拟支付确认 |
+
+### 管理员 `/api/v1/admin`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/bookings` | 全局订单 |
+| POST | `/bookings/{id}/confirm` | 确认订单 |
+| POST | `/bookings/{id}/check-in` | 入住 |
+| POST | `/bookings/{id}/check-out` | 退房 |
+| GET/POST/PUT | `/rooms`, `/room-types` | 客房与房型管理 |
+| GET | `/users` | 用户列表 |
+| POST | `/users/{id}/disable` | 禁用用户 |
 
 ## 编码原则
 
@@ -311,6 +339,53 @@ AI Agent 及开发者在修改代码时必须遵守：
 5. **不提交密钥** — `.env` 不入库，生产 `SECRET_KEY` 必须替换
 6. **不跳过测试** — 改动 API 后用 curl 或 Swagger 验证
 7. **Schema 同步** — 后端 Schema 变更时同步前端类型
+8. **记录开发笔记** — 遇到 Bug 或技术难点时，按规范追加到 `docs/PROJECT_NOTES.md`（见下文）
+
+## 项目开发笔记
+
+开发过程中遇到的 **Bug、异常、技术难点与解决方案** 须持续记录到 [`docs/PROJECT_NOTES.md`](docs/PROJECT_NOTES.md)，作为毕业论文「系统实现」「关键技术」「测试与问题分析」等章节的原始素材。
+
+### 何时记录
+
+在以下情况**必须**追加一条笔记：
+
+- 排查超过 15 分钟才定位的 Bug
+- 涉及并发、事务、认证、数据库锁等核心机制的问题
+- 环境 / 部署 / 配置类踩坑（Docker、Nginx、`.env` 等）
+- 设计与实现不一致、需要权衡取舍的决策
+- 压测、优化前后有可量化对比的发现
+
+简单拼写错误或一眼可改的告警**不必**记录。
+
+### 记录方式
+
+1. 打开 `docs/PROJECT_NOTES.md`
+2. 在「问题记录」章节**末尾**追加一条（保留历史，不删不改旧条目）
+3. 使用文件内提供的**记录模板**，填写：
+
+| 字段 | 说明 |
+|------|------|
+| 日期 + 标题 | 便于检索，如 `[2026-07-10] CORS 配置解析失败` |
+| 模块 | 后端 / 前端 / 数据库 / Docker / … |
+| 阶段 | 对应开发路线图周次或功能名 |
+| 现象 | 错误表现、HTTP 状态码、用户可见结果 |
+| 原因 | 根因分析，可附关键日志 |
+| 解决 | 修改了哪些文件、采用什么方案 |
+| 论文可用点 | 可直接改写进论文的表述（技术难点、工程经验、创新依据） |
+
+### AI Agent 义务
+
+完成 Bug 修复或疑难问题排查后，Agent 应**主动**询问或直接追加一条 `PROJECT_NOTES.md` 记录，并在 `论文可用点` 中写清该问题对论文的价值。若用户明确说「记入笔记」或「为论文记录」，则必须执行。
+
+### 与论文文档的关系
+
+| 文档 | 用途 |
+|------|------|
+| `doc/FastAPI 酒店系统设计.md` | 开题 / 设计阶段的**方案与理论** |
+| `docs/PROJECT_NOTES.md` | 编码阶段的**实践、踩坑、调试与实现细节** |
+| 毕业论文正文 | 从 PROJECT_NOTES 提炼「实现难点」「测试过程」「问题解决」小节 |
+
+**原则**：设计文档写「要做什么」，项目笔记写「实际怎么做、卡在哪里、怎么解决」。
 
 ## 常用命令
 
@@ -353,6 +428,7 @@ cp .env.example .env
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access Token 有效期 | `15` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh Token 有效期 | `7` |
 | `HOLD_TTL_MINUTES` | 预订 Hold 超时（分钟） | `15` |
+| `HOLD_RELEASE_INTERVAL_MINUTES` | 过期 Hold 扫描间隔（分钟） | `1` |
 
 配置加载：`backend/app/config.py` 自动读取项目根目录 `.env`。
 
@@ -361,8 +437,8 @@ cp .env.example .env
 | 阶段 | 周期 | 后端 | 前端 | 状态 |
 |------|------|------|------|------|
 | 脚手架 | 第 1 周 | 项目基线、ORM、基础 API | Vue 基线、登录/预订页面 | ✅ 完成 |
-| 核心逻辑 | 第 2-3 周 | 悲观锁、Hold 状态机、MCP 完善 | 预订链路联调 | 🔲 待开发 |
-| 管理后台 | 第 4-5 周 | 管理员 API、定时释放任务 | 管理工作台 | 🔲 待开发 |
+| 核心逻辑 | 第 2-3 周 | 悲观锁、Hold 状态机、支付确认 | 预订链路联调 | ✅ 完成 |
+| 管理后台 | 第 4-5 周 | 管理员 API、定时释放任务 | 管理工作台 | 🔲 后端完成 |
 | 压测优化 | 第 6 周 | Locust 压测、索引调优 | E2E 测试 | 🔲 待开发 |
 | 部署交付 | 第 7 周 | Docker 生产镜像、Nginx 调优 | 部署文档 | 🔲 待开发 |
 
@@ -373,4 +449,5 @@ cp .env.example .env
 | `doc/FastAPI 酒店系统设计.md` | 完整架构设计、并发控制、索引优化、Nginx 配置 |
 | `docs/DEV.md` | 本地开发流程与故障排查 |
 | `docs/API.md` | API 请求/响应示例 |
+| `docs/PROJECT_NOTES.md` | 开发笔记：Bug、技术难点、解决方案（论文实现章节素材） |
 | `README.md` | 项目概览与快速开始 |

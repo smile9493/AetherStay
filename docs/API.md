@@ -166,7 +166,17 @@ POST /bookings
 
 **MCP Tool:** `create_booking`
 
-总价 = 房型基准价 × 入住天数。
+创建预订时执行 Hold 阶段：使用 `SELECT FOR UPDATE NOWAIT` 悲观锁锁定房态，状态设为 `held`，订单为 `pending`。总价 = 房型基准价 × 入住天数。
+
+### 模拟支付确认
+
+```
+POST /bookings/{booking_id}/pay
+```
+
+需要 Cookie 认证。仅订单本人可操作。将 `pending` 订单确认为 `confirmed`，房态从 `held` 变为 `booked`。
+
+**MCP Tool:** `confirm_booking_payment`
 
 ### 我的订单
 
@@ -192,7 +202,7 @@ GET /bookings/{booking_id}
 POST /bookings/{booking_id}/cancel
 ```
 
-需要 Cookie 认证。仅本人可操作。`checked_in` / `checked_out` 状态不可取消。
+需要 Cookie 认证。仅本人可操作。`checked_in` / `checked_out` 状态不可取消。同步释放关联房态为 `available`。
 
 **MCP Tool:** `cancel_booking`
 
@@ -202,6 +212,44 @@ POST /bookings/{booking_id}/cancel
   "message": "Booking cancelled"
 }
 ```
+
+## 管理员 API
+
+所有 `/admin/*` 端点需要 `admin` 角色。
+
+### 订单管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/bookings` | 全局订单列表（支持 `status`、`check_in_from`、`check_in_to` 筛选） |
+| POST | `/admin/bookings/{id}/confirm` | 确认 pending 订单 |
+| POST | `/admin/bookings/{id}/check-in` | 办理入住 |
+| POST | `/admin/bookings/{id}/check-out` | 办理退房 |
+
+### 客房管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/rooms` | 客房列表（含 inactive） |
+| POST | `/admin/rooms` | 新增客房并生成 90 天房态 |
+| PUT | `/admin/rooms/{id}` | 更新门牌号/房型/状态 |
+
+### 房型管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/room-types` | 房型列表 |
+| POST | `/admin/room-types` | 新增房型 |
+| PUT | `/admin/room-types/{id}` | 更新房型 |
+
+### 用户管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/users` | 用户列表 |
+| POST | `/admin/users/{id}/disable` | 禁用用户 |
+
+默认管理员：`admin` / `admin1234`
 
 ## 状态码
 
@@ -214,7 +262,7 @@ POST /bookings/{booking_id}/cancel
 | 403 | 权限不足 |
 | 404 | 资源不存在 |
 | 409 | 冲突（如用户名已存在、房间已被占用） |
-| 423 | 房间被锁定（并发抢购，待实现） |
+| 423 | 房间被锁定（并发抢购 NOWAIT 快速失败） |
 
 ## 健康检查
 

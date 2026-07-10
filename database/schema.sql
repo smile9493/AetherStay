@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `username` VARCHAR(64) NOT NULL UNIQUE COMMENT 'Login username',
     `password_hash` VARCHAR(255) NOT NULL COMMENT 'Argon2id password hash',
     `role` ENUM('customer', 'admin') NOT NULL DEFAULT 'customer' COMMENT 'System role',
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Account active flag',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation time',
     PRIMARY KEY (`id`),
     INDEX `idx_username` (`username`)
@@ -93,3 +94,7 @@ CROSS JOIN (
          (SELECT 0 AS N) c
     WHERE a.N + b.N * 10 + c.N * 100 < 90
 ) d;
+
+-- Default admin (username: admin, password: admin1234)
+INSERT INTO `users` (`username`, `password_hash`, `role`, `is_active`) VALUES
+    ('admin', '$argon2id$v=19$m=65536,t=3,p=4$iVFqzRkjxHjv/b+XsjYmJA$SkLNfEfOFdTnyzO7T/NIkVxZz9N2D7T1hQWXryqmTu0', 'admin', 1);

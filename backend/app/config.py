@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     HOLD_TTL_MINUTES: int = 15
+    HOLD_RELEASE_INTERVAL_MINUTES: int = 1
 
 
 @lru_cache
