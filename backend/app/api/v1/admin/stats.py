@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import and_, func, select, case, or_
@@ -23,7 +24,7 @@ class DashboardStats(BaseModel):
     pending_bookings: int
     confirmed_bookings: int
     active_check_ins: int
-    total_revenue: float
+    total_revenue: float = 0.0   # sourced from Decimal; cast to float for JSON
     total_rooms: int
     active_rooms: int
     rooms_occupied_today: int
@@ -106,7 +107,7 @@ async def get_dashboard_stats(
     )
     us = user_stats.one()
 
-    today = date.today()
+    today = datetime.now(UTC).astimezone(ZoneInfo("Asia/Shanghai")).date()
     now = datetime.now(UTC).replace(tzinfo=None)
     occupied_today = (
         await db.execute(

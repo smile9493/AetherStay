@@ -24,8 +24,8 @@ async def get_inventory_matrix(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[CurrentUser, Depends(admin_only)],
     start_date: Annotated[
-        date, Query(description="Start date (YYYY-MM-DD)")
-    ] = date.today(),
+        date | None, Query(description="Start date (YYYY-MM-DD), defaults to today")
+    ] = None,
     end_date: Annotated[
         date | None, Query(description="End date (YYYY-MM-DD), defaults to start + 14 days")
     ] = None,
@@ -33,6 +33,8 @@ async def get_inventory_matrix(
     page_size: Annotated[int, Query(ge=1, le=50)] = 10,
 ):
     """返回房间 × 日期房态矩阵（按房间分页）。"""
+    if start_date is None:
+        start_date = date.today()
     if end_date is None:
         end_date = start_date + timedelta(days=14)
     if end_date <= start_date:

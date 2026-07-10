@@ -67,6 +67,7 @@ def create_refresh_token(user_id: int) -> str:
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
 ) -> CurrentUser:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -82,6 +83,9 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
+
+    # Cache full user on request for downstream reuse (avoid re-query in /me)
+    request.state._cached_user = user
 
     return CurrentUser(user_id=user.id, username=user.username, role=user.role)
 

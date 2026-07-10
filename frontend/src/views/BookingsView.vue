@@ -6,6 +6,7 @@ import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import AdminPagination from '@/components/admin/AdminPagination.vue'
 import { usePagination, type PaginatedResult } from '@/composables/usePagination'
+import { handleApiError } from '@/utils/handleError'
 import { Timer, Wallet, CircleClose, List, ArrowRight, InfoFilled, Search, Delete } from '@element-plus/icons-vue'
 
 interface Booking {
@@ -100,17 +101,21 @@ function handleSizeChange(size: number) {
 
 async function cancelBooking(id: number) {
   try {
-    await ElMessageBox.confirm('确定要取消此房间预订吗？取消后库存将立即释放。', '确认取消', { 
+    await ElMessageBox.confirm('确定要取消此房间预订吗？取消后库存将立即释放。', '确认取消', {
       type: 'warning',
       confirmButtonText: '确定取消',
       cancelButtonText: '暂不取消',
       confirmButtonClass: 'el-button--danger'
     })
+  } catch {
+    return // user cancelled
+  }
+  try {
     await api.post(`/bookings/${id}/cancel`)
     ElMessage.success('订单已成功取消')
     loadBookings()
-  } catch {
-    // dismissed
+  } catch (err) {
+    handleApiError(err, '取消订单失败')
   }
 }
 
@@ -126,14 +131,18 @@ async function deleteBooking(id: number) {
         confirmButtonClass: 'el-button--danger',
       },
     )
+  } catch {
+    return // user cancelled
+  }
+  try {
     await api.delete(`/bookings/${id}`)
     ElMessage.success('订单记录已删除')
     if (bookings.value.length === 1 && currentPage.value > 1) {
       currentPage.value -= 1
     }
     loadBookings()
-  } catch {
-    // dismissed or failed
+  } catch (err) {
+    handleApiError(err, '删除订单失败')
   }
 }
 

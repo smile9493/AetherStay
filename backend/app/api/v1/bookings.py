@@ -7,7 +7,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.booking import Booking, BookingStatus
-from app.models.room import Room
+from app.models.room import Room, RoomStatus
+from app.models.user import User, UserRole
 from app.schemas.admin import PaginatedBookingsResponse
 from app.schemas.room import BookingCreate, BookingResponse
 from app.services import booking_service
@@ -94,7 +95,7 @@ async def get_booking(
     booking = result.scalar_one_or_none()
     if not booking:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
-    if booking.user_id != current_user.user_id and current_user.role.value != "admin":
+    if booking.user_id != current_user.user_id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     return await booking_service.serialize_booking(db, booking)
 
@@ -105,7 +106,7 @@ async def cancel_booking(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    is_admin = current_user.role.value == "admin"
+    is_admin = current_user.role == UserRole.ADMIN
     await booking_service.cancel_booking(
         db,
         booking_id=booking_id,
@@ -121,7 +122,7 @@ async def delete_booking(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    is_admin = current_user.role.value == "admin"
+    is_admin = current_user.role == UserRole.ADMIN
     await booking_service.delete_booking(
         db,
         booking_id=booking_id,

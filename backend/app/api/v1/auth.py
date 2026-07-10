@@ -51,7 +51,7 @@ async def login(data: UserLogin, response: Response, db: Annotated[AsyncSession,
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=60 * 15,
     )
@@ -59,7 +59,7 @@ async def login(data: UserLogin, response: Response, db: Annotated[AsyncSession,
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=60 * 60 * 24 * 7,
     )
@@ -97,7 +97,7 @@ async def refresh_token(
         key="access_token",
         value=new_access,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=60 * 15,
     )
@@ -105,7 +105,7 @@ async def refresh_token(
         key="refresh_token",
         value=new_refresh,
         httponly=True,
-        secure=False,
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=60 * 60 * 24 * 7,
     )
@@ -120,7 +120,12 @@ async def logout(response: Response):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: Annotated[CurrentUser, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(User).where(User.id == current_user.user_id))
-    user = result.scalar_one()
+async def get_me(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    request: Request,
+):
+    from app.models.user import User as UserModel
+    user: UserModel = getattr(request.state, "_cached_user", None)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User cache missing")
     return user

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     HOLD_TTL_MINUTES: int = 15
     HOLD_RELEASE_INTERVAL_MINUTES: int = 1
 
+    COOKIE_SECURE: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

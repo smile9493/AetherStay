@@ -5,6 +5,7 @@ import api from '@/api'
 import { Search, Refresh, Calendar, Avatar, Operation, Plus, Edit, Switch } from '@element-plus/icons-vue'
 import AdminPagination from '@/components/admin/AdminPagination.vue'
 import { usePagination, type PaginatedResult } from '@/composables/usePagination'
+import { handleApiError } from '@/utils/handleError'
 
 interface UserItem {
   id: number
@@ -89,7 +90,7 @@ async function loadUsers() {
     })
     users.value = data.items
   } catch {
-    // non-blocking
+    console.warn('Failed to load users for booking dropdown (non-blocking)')
   }
 }
 
@@ -297,12 +298,16 @@ async function handleCheckIn(id: number) {
       confirmButtonText: '确认入住',
       cancelButtonText: '取消',
     })
-    loading.value = true
+  } catch {
+    return // user cancelled
+  }
+  loading.value = true
+  try {
     await api.post(`/admin/bookings/${id}/check-in`)
     ElMessage.success('已成功办理入住登记')
     loadBookings()
-  } catch {
-    // dismissed
+  } catch (err) {
+    handleApiError(err, '入住登记失败')
   } finally {
     loading.value = false
   }
@@ -315,12 +320,16 @@ async function handleCheckOut(id: number) {
       confirmButtonText: '确认退房',
       cancelButtonText: '取消',
     })
-    loading.value = true
+  } catch {
+    return // user cancelled
+  }
+  loading.value = true
+  try {
     await api.post(`/admin/bookings/${id}/check-out`)
     ElMessage.success('已成功办理退房，客房已清扫归还')
     loadBookings()
-  } catch {
-    // dismissed
+  } catch (err) {
+    handleApiError(err, '退房办理失败')
   } finally {
     loading.value = false
   }
@@ -334,12 +343,16 @@ async function cancelOrder(id: number) {
       cancelButtonText: '保留订单',
       confirmButtonClass: 'el-button--danger',
     })
-    loading.value = true
+  } catch {
+    return // user cancelled
+  }
+  loading.value = true
+  try {
     await api.post(`/bookings/${id}/cancel`)
     ElMessage.success('订单已取消并归还锁定的库存')
     loadBookings()
-  } catch {
-    // dismissed
+  } catch (err) {
+    handleApiError(err, '取消订单失败')
   } finally {
     loading.value = false
   }

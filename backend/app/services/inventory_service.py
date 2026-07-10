@@ -81,7 +81,6 @@ def is_held_valid(record: DailyRoomInventory, now: datetime) -> bool:
         record.status == InventoryStatus.HELD
         and record.held_until is not None
         and record.held_until >= now
-        or False
     )
 
 

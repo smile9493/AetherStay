@@ -5,6 +5,7 @@ import api from '@/api'
 import { CircleClose, Lock, View, Edit, Medal } from '@element-plus/icons-vue'
 import AdminPagination from '@/components/admin/AdminPagination.vue'
 import { usePagination, type PaginatedResult } from '@/composables/usePagination'
+import { handleApiError } from '@/utils/handleError'
 
 interface UserItem {
   id: number
@@ -133,7 +134,9 @@ function openEdit(user: UserItem) {
   } else {
     api.get<UserDetail>(`/admin/users/${user.id}`).then(({ data }) => {
       editForm.value.admin_notes = data.admin_notes ?? ''
-    }).catch(() => {})
+    }).catch((err) => {
+      console.error('Failed to load user details for edit form', err)
+    })
   }
 }
 
@@ -191,15 +194,19 @@ async function disableUserAccount(user: UserItem) {
         confirmButtonClass: 'el-button--danger',
       },
     )
-    loading.value = true
+  } catch {
+    return // user cancelled
+  }
+  loading.value = true
+  try {
     await api.post(`/admin/users/${user.id}/disable`)
     ElMessage.success(`账户 "${user.username}" 已被成功禁用`)
     loadUsers()
     if (userDetail.value?.id === user.id) {
       userDetail.value = { ...userDetail.value, is_active: false }
     }
-  } catch {
-    // dismissed
+  } catch (err) {
+    handleApiError(err, '禁用账户失败')
   } finally {
     loading.value = false
   }

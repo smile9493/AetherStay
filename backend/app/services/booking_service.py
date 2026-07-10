@@ -359,8 +359,23 @@ async def auto_checkout_due_bookings(
 
 async def release_expired_holds(db: AsyncSession) -> int:
     now = datetime.now(UTC).replace(tzinfo=None)
-    released = 0
 
+    # 先查询过期记录，不加锁
+    check_result = await db.execute(
+        select(DailyRoomInventory)
+        .where(
+            and_(
+                DailyRoomInventory.status == InventoryStatus.HELD,
+                DailyRoomInventory.held_until.is_not(None),
+                DailyRoomInventory.held_until < now,
+            )
+        )
+    )
+    expired_records = list(check_result.scalars().all())
+    if not expired_records:
+        return 0
+
+    released = 0
     async with transaction(db):
         result = await db.execute(
             select(DailyRoomInventory)
