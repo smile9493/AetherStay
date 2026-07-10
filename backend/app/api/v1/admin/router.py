@@ -1,0 +1,9 @@
+from fastapi import APIRouter
+
+from app.api.v1.admin import bookings, room_types, rooms, users
+
+admin_router = APIRouter(prefix="/admin")
+admin_router.include_router(bookings.router)
+admin_router.include_router(rooms.router)
+admin_router.include_router(room_types.router)
+admin_router.include_router(users.router)
