@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
-import { Timer, Wallet, CircleClose, List, ArrowRight, InfoFilled } from '@element-plus/icons-vue'
+import { Timer, Wallet, CircleClose, List, ArrowRight, InfoFilled, Search } from '@element-plus/icons-vue'
 
 interface Booking {
   id: number
@@ -17,7 +17,7 @@ interface Booking {
   held_until?: string | null
   room?: { 
     room_number: string; 
-    room_type?: { name: string; capacity: number; image_url?: string } 
+    room_type?: { id: number; name: string; capacity: number; image_url?: string } 
   }
 }
 
@@ -84,6 +84,16 @@ async function cancelBooking(id: number) {
   } catch {
     // dismissed
   }
+}
+
+// Re-book shortcut
+function reBook(booking: Booking) {
+  const roomTypeId = booking.room?.room_type?.id
+  if (!roomTypeId) {
+    router.push('/rooms')
+    return
+  }
+  router.push({ path: '/rooms', query: { room_type_id: String(roomTypeId) } })
 }
 
 // Payment trigger
@@ -265,6 +275,24 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
                 @click="cancelBooking(booking.id)"
               >
                 <el-icon><CircleClose /></el-icon> 取消预订
+              </el-button>
+            </div>
+          </div>
+
+          <!-- Re-book shortcut for finished/cancelled orders -->
+          <div class="card-actions-footer" v-else-if="['checked_out', 'cancelled'].includes(booking.status)">
+            <div class="hold-timer-area">
+              <el-icon color="#94a3b8"><InfoFilled /></el-icon>
+              <span class="timer-expired">{{ booking.status === 'checked_out' ? '已完成住宿，期待再次光临' : '该预订已取消' }}</span>
+            </div>
+            <div class="buttons-area">
+              <el-button 
+                type="primary"
+                size="default"
+                class="pay-trigger-btn"
+                @click="reBook(booking)"
+              >
+                <el-icon><Search /></el-icon> 再次预订
               </el-button>
             </div>
           </div>

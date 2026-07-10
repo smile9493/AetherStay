@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
-import { Cpu, List, House, Setting, User } from '@element-plus/icons-vue'
+import { Calendar, Cpu, List, House, Setting, User } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -48,6 +48,14 @@ const route = useRoute()
             >
               <el-icon><Setting /></el-icon>
               <span>房型设置</span>
+            </div>
+            <div 
+              class="menu-item" 
+              :class="{ active: route.name === 'admin-inventory' }"
+              @click="router.push('/admin/inventory')"
+            >
+              <el-icon><Calendar /></el-icon>
+              <span>房态日历</span>
             </div>
             <div 
               class="menu-item" 

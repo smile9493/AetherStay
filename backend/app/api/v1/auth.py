@@ -1,9 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
@@ -17,6 +19,7 @@ from app.utils.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+settings = get_settings()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -61,6 +64,52 @@ async def login(data: UserLogin, response: Response, db: Annotated[AsyncSession,
         max_age=60 * 60 * 24 * 7,
     )
     return TokenResponse()
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    response: Response,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """读取 refresh_token Cookie，验证后签发新的 access_token + refresh_token（固定7天有效，不滑动）。"""
+    raw = request.cookies.get("refresh_token")
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+
+    try:
+        payload = jwt.decode(raw, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        user_id = int(payload["sub"])
+    except (JWTError, ValueError, KeyError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or disabled")
+
+    new_access = create_access_token(user.id, user.username, user.role)
+    new_refresh = create_refresh_token(user.id)
+
+    response.set_cookie(
+        key="access_token",
+        value=new_access,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=60 * 15,
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return TokenResponse(message="Token refreshed")
 
 
 @router.post("/logout")
