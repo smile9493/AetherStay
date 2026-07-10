@@ -31,4 +31,4 @@ async def pay_booking(
     if booking.user_id != current_user.user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    return await booking_service.confirm_booking(db, booking_id)
+    return await booking_service.serialize_booking(db, await booking_service.confirm_booking(db, booking_id))

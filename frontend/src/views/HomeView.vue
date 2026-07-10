@@ -28,6 +28,9 @@ interface Room {
     base_price: string
     capacity: number
     total_rooms?: number
+    description?: string
+    amenities?: string
+    image_url?: string
   }
 }
 
@@ -36,7 +39,10 @@ interface RoomTypeCard {
   name: string
   base_price: string
   capacity: number
-  room_count: number
+  total_rooms: number
+  description?: string
+  amenities?: string
+  image_url?: string
 }
 
 const router = useRouter()
@@ -65,18 +71,18 @@ async function loadRoomTypes() {
     const map = new Map<number, RoomTypeCard>()
     for (const room of data) {
       if (!room.room_type || room.status !== 'active') continue
-      const existing = map.get(room.room_type.id)
-      if (existing) {
-        existing.room_count += 1
-      } else {
-        map.set(room.room_type.id, {
-          id: room.room_type.id,
-          name: room.room_type.name,
-          base_price: room.room_type.base_price,
-          capacity: room.room_type.capacity,
-          room_count: 1,
-        })
-      }
+      const rt = room.room_type
+      if (map.has(rt.id)) continue
+      map.set(rt.id, {
+        id: rt.id,
+        name: rt.name,
+        base_price: rt.base_price,
+        capacity: rt.capacity,
+        total_rooms: rt.total_rooms ?? 0,
+        description: rt.description,
+        amenities: rt.amenities,
+        image_url: rt.image_url,
+      })
     }
     roomTypes.value = Array.from(map.values())
   } catch {
@@ -190,12 +196,29 @@ function goToRooms(typeId?: number) {
           :md="8"
         >
           <div class="room-card glass-panel">
-            <div class="room-card-img" :class="`room-type-${type.id % 3}`">
-              <span class="room-badge">共 {{ type.room_count }} 间</span>
+            <div
+              class="room-card-img"
+              :style="type.image_url
+                ? { backgroundImage: `url(${type.image_url})` }
+                : {}"
+              :class="type.image_url ? '' : `room-type-${type.id % 3}`"
+            >
+              <span class="room-badge">共 {{ type.total_rooms }} 间</span>
             </div>
             <div class="room-card-body">
               <h3>{{ type.name }}</h3>
               <p class="room-meta">最多入住 {{ type.capacity }} 人</p>
+              <p v-if="type.description" class="room-desc">{{ type.description }}</p>
+              <div v-if="type.amenities" class="amenities-tags">
+                <el-tag
+                  v-for="tag in type.amenities.split(',')"
+                  :key="tag"
+                  size="small"
+                  class="amenity-tag"
+                >
+                  {{ tag.trim() }}
+                </el-tag>
+              </div>
               <div class="room-footer">
                 <div class="room-price">
                   <span class="price-label">每晚起</span>
@@ -438,7 +461,29 @@ function goToRooms(typeId?: number) {
 .room-meta {
   font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 16px;
+  margin-bottom: 8px;
+}
+
+.room-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.amenities-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.amenity-tag {
+  font-size: 11px;
 }
 
 .room-footer {

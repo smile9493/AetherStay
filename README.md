@@ -33,6 +33,7 @@ AetherStay/
 │       ├── services/     # 业务逻辑层
 │       └── utils/        # 认证、工具函数
 ├── frontend/             # Vue 3 前端
+├── scaffold/             # CLI 脚手架（代码生成工具）
 ├── database/             # MySQL DDL 脚本
 ├── docs/                 # 开发文档
 │   ├── DEV.md            # 本地开发指南
@@ -84,9 +85,16 @@ cd frontend && npm install && npm run dev
 | POST | `/api/v1/auth/register` | 用户注册 |
 | POST | `/api/v1/auth/login` | 用户登录 |
 | GET | `/api/v1/rooms/search` | 搜索可用客房 |
-| POST | `/api/v1/bookings` | 创建预订 |
+| POST | `/api/v1/bookings` | 创建预订（Hold 阶段） |
 | GET | `/api/v1/bookings/my` | 我的订单 |
+| POST | `/api/v1/bookings/{id}/pay` | 模拟支付确认 |
 | POST | `/api/v1/bookings/{id}/cancel` | 取消订单 |
+| GET | `/api/v1/admin/bookings` | 管理员：全局订单 |
+| POST | `/api/v1/admin/bookings/{id}/confirm` | 管理员：确认付款 |
+| POST | `/api/v1/admin/bookings/{id}/check-in` | 管理员：入住 |
+| POST | `/api/v1/admin/bookings/{id}/check-out` | 管理员：退房 |
+
+**MCP Tools：** `login`、`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`、`confirm_booking_payment`
 
 完整 API 文档见 [docs/API.md](docs/API.md) 或 http://localhost:8000/docs。
 
@@ -130,9 +138,9 @@ cp .env.example .env
 | 阶段 | 内容 | 状态 |
 |------|------|------|
 | 第 1 周 | 项目脚手架、数据库设计、基础 API | ✅ |
-| 第 2-3 周 | 悲观锁、Hold 状态机、MCP 完善 | 🔲 |
-| 第 4-5 周 | 管理员后台、定时释放任务 | 🔲 |
-| 第 6 周 | 并发压测、索引优化 | 🔲 |
+| 第 2-3 周 | 悲观锁、Hold 状态机、MCP 完善 | ✅ |
+| 第 4-5 周 | 管理员后台、定时释放任务 | ✅ |
+| 第 6 周 | 并发压测、索引优化、单元测试 | 🔄 进行中 |
 | 第 7 周 | 生产部署、文档完善 | 🔲 |
 
 ## License

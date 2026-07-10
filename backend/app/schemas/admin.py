@@ -33,6 +33,9 @@ class RoomTypeCreate(BaseModel):
     base_price: Decimal = Field(gt=0)
     capacity: int = Field(ge=1, le=20)
     total_rooms: int = Field(ge=0)
+    description: str | None = Field(default=None, max_length=512)
+    amenities: str | None = Field(default=None, max_length=512)
+    image_url: str | None = Field(default=None, max_length=256)
 
 
 class RoomTypeUpdate(BaseModel):
@@ -40,6 +43,9 @@ class RoomTypeUpdate(BaseModel):
     base_price: Decimal | None = Field(default=None, gt=0)
     capacity: int | None = Field(default=None, ge=1, le=20)
     total_rooms: int | None = Field(default=None, ge=0)
+    description: str | None = Field(default=None, max_length=512)
+    amenities: str | None = Field(default=None, max_length=512)
+    image_url: str | None = Field(default=None, max_length=256)
 
 
 class AdminUserResponse(UserResponse):

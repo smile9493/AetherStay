@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -39,7 +39,8 @@ async def list_bookings(
         stmt = stmt.where(and_(*conditions))
     stmt = stmt.order_by(Booking.created_at.desc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    bookings = result.scalars().all()
+    return await booking_service.serialize_bookings(db, list(bookings))
 
 
 @router.post("/{booking_id}/confirm", response_model=BookingResponse)
@@ -48,7 +49,8 @@ async def confirm_booking(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[CurrentUser, Depends(require_admin)],
 ):
-    return await booking_service.confirm_booking(db, booking_id)
+    booking = await booking_service.confirm_booking(db, booking_id)
+    return await booking_service.serialize_booking(db, booking)
 
 
 @router.post("/{booking_id}/check-in", response_model=BookingResponse)
@@ -57,7 +59,8 @@ async def check_in(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[CurrentUser, Depends(require_admin)],
 ):
-    return await booking_service.check_in_booking(db, booking_id)
+    booking = await booking_service.check_in_booking(db, booking_id)
+    return await booking_service.serialize_booking(db, booking)
 
 
 @router.post("/{booking_id}/check-out", response_model=BookingResponse)
@@ -66,4 +69,5 @@ async def check_out(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[CurrentUser, Depends(require_admin)],
 ):
-    return await booking_service.check_out_booking(db, booking_id)
+    booking = await booking_service.check_out_booking(db, booking_id)
+    return await booking_service.serialize_booking(db, booking)

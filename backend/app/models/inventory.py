@@ -16,7 +16,10 @@ class InventoryStatus(str, enum.Enum):
 
 class DailyRoomInventory(Base):
     __tablename__ = "daily_room_inventories"
-    __table_args__ = (Index("idx_date_status", "date", "status"),)
+    __table_args__ = (
+        Index("idx_date_status", "date", "status"),
+        Index("idx_status_held_until", "status", "held_until"),
+    )
 
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
     date: Mapped[date] = mapped_column(Date, primary_key=True)

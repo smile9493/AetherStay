@@ -156,4 +156,37 @@ docker compose up -d --build
 }
 ```
 
-可用 Tools：`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`。
+可用 Tools：`login`、`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`、`confirm_booking_payment`。
+
+## 数据库迁移（已有 Docker 卷）
+
+若从旧版 schema 升级，手动执行：
+
+```sql
+ALTER TABLE daily_room_inventories
+ADD INDEX idx_status_held_until (status, held_until);
+```
+
+房型内容字段（`description` / `amenities` / `image_url`）：
+
+```bash
+mysql -h 127.0.0.1 -P 3307 -u aetherstay -paetherstay aetherstay \
+  < database/migrations/002_room_types_content_fields.sql
+```
+
+新环境由 `database/schema.sql` 自动包含上述变更。
+
+## 测试与压测
+
+```bash
+# 安装开发依赖
+pip install -r tests/requirements-dev.txt
+
+# 单元/集成测试（默认 SQLite，无需 MySQL）
+pytest tests/ -v
+
+# Locust 压测
+locust -f tests/load/locustfile.py --host=http://localhost:8000
+```
+
+详见 [tests/load/README.md](../tests/load/README.md)。

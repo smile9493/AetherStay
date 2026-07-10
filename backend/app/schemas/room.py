@@ -14,6 +14,9 @@ class RoomTypeResponse(BaseModel):
     base_price: Decimal
     capacity: int
     total_rooms: int
+    description: str | None = None
+    amenities: str | None = None
+    image_url: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -49,6 +52,7 @@ class BookingResponse(BaseModel):
     total_price: Decimal
     status: BookingStatus
     created_at: datetime
+    held_until: datetime | None = None
     room: RoomResponse | None = None
 
     model_config = {"from_attributes": True}

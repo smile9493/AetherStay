@@ -1,19 +1,20 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { Ticket, House, User, TrendCharts, Money } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const stats = ref({
-  totalBookings: 0,
-  pendingBookings: 0,
-  activeCheckIns: 0,
-  totalRevenue: 0,
-  totalRooms: 0,
-  activeRooms: 0,
-  totalUsers: 0,
-  activeUsers: 0,
+  total_bookings: 0,
+  pending_bookings: 0,
+  confirmed_bookings: 0,
+  active_check_ins: 0,
+  total_revenue: 0,
+  total_rooms: 0,
+  active_rooms: 0,
+  total_users: 0,
+  active_users: 0,
 })
 
 const recentBookings = ref<any[]>([])
@@ -23,34 +24,13 @@ onMounted(loadDashboardData)
 async function loadDashboardData() {
   loading.value = true
   try {
-    const [bookingsRes, roomsRes, usersRes] = await Promise.all([
-      api.get<any[]>('/admin/bookings'),
-      api.get<any[]>('/admin/rooms'),
-      api.get<any[]>('/admin/users')
+    const [statsRes, bookingsRes] = await Promise.all([
+      api.get('/admin/stats'),
+      api.get<any[]>('/admin/bookings')
     ])
     
-    const bookings = bookingsRes.data
-    const rooms = roomsRes.data
-    const users = usersRes.data
-    
-    // Calculate statistics
-    stats.value.totalBookings = bookings.length
-    stats.value.pendingBookings = bookings.filter(b => b.status === 'pending').length
-    stats.value.activeCheckIns = bookings.filter(b => b.status === 'checked_in').length
-    
-    // Revenue from confirmed/checked_in/checked_out orders
-    stats.value.totalRevenue = bookings
-      .filter(b => ['confirmed', 'checked_in', 'checked_out'].includes(b.status))
-      .reduce((acc, b) => acc + parseFloat(b.total_price), 0)
-      
-    stats.value.totalRooms = rooms.length
-    stats.value.activeRooms = rooms.filter(r => r.status === 'active').length
-    
-    stats.value.totalUsers = users.length
-    stats.value.activeUsers = users.filter(u => u.is_active).length
-    
-    // Get top 5 recent bookings
-    recentBookings.value = bookings.slice(0, 5)
+    stats.value = statsRes.data
+    recentBookings.value = bookingsRes.data.slice(0, 5)
     
   } catch (err: any) {
     ElMessage.error('获取大盘数据失败，请检查您的管理权限')
@@ -60,11 +40,17 @@ async function loadDashboardData() {
 }
 
 const occupancyRate = computed(() => {
-  if (stats.value.totalRooms === 0) return 0
-  return Math.round((stats.value.activeCheckIns / stats.value.totalRooms) * 100)
+  if (stats.value.total_rooms === 0) return 0
+  return Math.round((stats.value.active_check_ins / stats.value.total_rooms) * 100)
 })
 
-import { computed } from 'vue'
+const bookingStatusMap: Record<string, { text: string; type: 'warning' | 'success' | 'primary' | 'info' | 'danger' }> = {
+  pending: { text: '待付款', type: 'warning' },
+  confirmed: { text: '已确认', type: 'success' },
+  checked_in: { text: '入住中', type: 'primary' },
+  checked_out: { text: '已退房', type: 'info' },
+  cancelled: { text: '已取消', type: 'danger' },
+}
 </script>
 
 <template>
@@ -86,7 +72,7 @@ import { computed } from 'vue'
           <div class="kpi-card-inner">
             <div class="text-group">
               <span class="kpi-label">营业总收入</span>
-              <span class="kpi-value">¥{{ stats.totalRevenue.toFixed(2) }}</span>
+              <span class="kpi-value">¥{{ stats.total_revenue.toFixed(2) }}</span>
             </div>
             <div class="icon-wrapper bg-green">
               <el-icon><Money /></el-icon>
@@ -99,7 +85,7 @@ import { computed } from 'vue'
           <div class="kpi-card-inner">
             <div class="text-group">
               <span class="kpi-label">总订单数量</span>
-              <span class="kpi-value">{{ stats.totalBookings }} 笔</span>
+              <span class="kpi-value">{{ stats.total_bookings }} 笔</span>
             </div>
             <div class="icon-wrapper bg-indigo">
               <el-icon><Ticket /></el-icon>
@@ -112,7 +98,7 @@ import { computed } from 'vue'
           <div class="kpi-card-inner">
             <div class="text-group">
               <span class="kpi-label">当前入住中</span>
-              <span class="kpi-value">{{ stats.activeCheckIns }} 间</span>
+              <span class="kpi-value">{{ stats.active_check_ins }} 间</span>
             </div>
             <div class="icon-wrapper bg-blue">
               <el-icon><House /></el-icon>
@@ -125,7 +111,7 @@ import { computed } from 'vue'
           <div class="kpi-card-inner">
             <div class="text-group">
               <span class="kpi-label">注册用户数</span>
-              <span class="kpi-value">{{ stats.totalUsers }} 名</span>
+              <span class="kpi-value">{{ stats.total_users }} 名</span>
             </div>
             <div class="icon-wrapper bg-purple">
               <el-icon><User /></el-icon>
@@ -154,15 +140,15 @@ import { computed } from 'vue'
             <div class="occupancy-stats">
               <div class="stat-bullet">
                 <span class="dot active"></span>
-                <span>客房总数：{{ stats.totalRooms }} 间</span>
+                <span>客房总数：{{ stats.total_rooms }} 间</span>
               </div>
               <div class="stat-bullet">
                 <span class="dot booked"></span>
-                <span>当前入住：{{ stats.activeCheckIns }} 间</span>
+                <span>当前入住：{{ stats.active_check_ins }} 间</span>
               </div>
               <div class="stat-bullet">
                 <span class="dot hold"></span>
-                <span>待付款锁房：{{ stats.pendingBookings }} 间</span>
+                <span>待付款锁房：{{ stats.pending_bookings }} 间</span>
               </div>
             </div>
           </div>
@@ -194,9 +180,9 @@ import { computed } from 'vue'
                 <span class="lbl-price">¥{{ item.total_price }}</span>
                 <el-tag 
                   size="small" 
-                  :type="item.status === 'confirmed' ? 'success' : item.status === 'pending' ? 'warning' : 'info'"
+                  :type="bookingStatusMap[item.status]?.type || 'info'"
                 >
-                  {{ item.status }}
+                  {{ bookingStatusMap[item.status]?.text || item.status }}
                 </el-tag>
               </div>
             </div>

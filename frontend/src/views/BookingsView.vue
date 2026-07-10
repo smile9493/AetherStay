@@ -14,9 +14,10 @@ interface Booking {
   total_price: string
   status: string
   created_at: string
+  held_until?: string | null
   room?: { 
     room_number: string; 
-    room_type?: { name: string; capacity: number } 
+    room_type?: { name: string; capacity: number; image_url?: string } 
   }
 }
 
@@ -107,20 +108,20 @@ async function handleConfirmPayment() {
   }
 }
 
-// Countdown computation for pending bookings (Hold TTL = 15 minutes)
-function getRemainingSeconds(createdAtStr: string) {
-  // Convert backend ISO datetime to local timestamp
-  // FastAPI created_at: "2026-07-10T07:16:09" (assumed UTC/local depending on server DB)
-  // Let's assume standard Date parsing
-  const createdTime = new Date(createdAtStr).getTime()
-  // Hold duration = 15 minutes
-  const expireTime = createdTime + 15 * 60 * 1000
-  const diff = Math.max(0, Math.floor((expireTime - nowTime.value) / 1000))
-  return diff
+// Countdown based on server-held_until, fallback to created_at + 15min
+function getRemainingSeconds(booking: Booking) {
+  let expireTime: number
+  if (booking.held_until) {
+    expireTime = new Date(booking.held_until).getTime()
+  } else {
+    const createdTime = new Date(booking.created_at).getTime()
+    expireTime = createdTime + 15 * 60 * 1000
+  }
+  return Math.max(0, Math.floor((expireTime - nowTime.value) / 1000))
 }
 
-function getCountdownText(createdAtStr: string) {
-  const seconds = getRemainingSeconds(createdAtStr)
+function getCountdownText(booking: Booking) {
+  const seconds = getRemainingSeconds(booking)
   if (seconds <= 0) return '已超时释放'
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
@@ -195,8 +196,13 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
           <!-- Card Body details -->
           <div class="card-details-body">
             <div class="room-details-left">
-              <div class="room-symbol">
-                <span>{{ booking.room?.room_number ?? booking.room_id }}</span>
+              <div
+                class="room-symbol"
+                :style="booking.room?.room_type?.image_url
+                  ? { backgroundImage: `url(${booking.room.room_type.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
+                  : {}"
+              >
+                <span v-if="!booking.room?.room_type?.image_url">{{ booking.room?.room_number ?? booking.room_id }}</span>
               </div>
               <div class="room-text-info">
                 <h4>{{ booking.room?.room_type?.name ?? '标准客房' }}</h4>
@@ -226,10 +232,10 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
           <div class="card-actions-footer" v-if="['pending', 'confirmed'].includes(booking.status)">
             <!-- Pending Hold Countdown -->
             <div class="hold-timer-area" v-if="booking.status === 'pending'">
-              <template v-if="getRemainingSeconds(booking.created_at) > 0">
+              <template v-if="getRemainingSeconds(booking) > 0">
                 <el-icon color="#ef4444"><Timer /></el-icon>
                 <span class="timer-warning">
-                  锁房倒计时：<strong class="timer-countdown">{{ getCountdownText(booking.created_at) }}</strong>
+                  锁房倒计时：<strong class="timer-countdown">{{ getCountdownText(booking) }}</strong>
                 </span>
               </template>
               <template v-else>
@@ -241,7 +247,7 @@ const statusMap: Record<string, { text: string; type: 'warning' | 'success' | 'p
             <div class="buttons-area">
               <!-- Pay Button -->
               <el-button 
-                v-if="booking.status === 'pending' && getRemainingSeconds(booking.created_at) > 0" 
+                v-if="booking.status === 'pending' && getRemainingSeconds(booking) > 0" 
                 type="primary" 
                 size="default" 
                 class="pay-trigger-btn"

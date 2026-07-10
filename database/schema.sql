@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS `room_types` (
     `base_price` DECIMAL(10, 2) NOT NULL COMMENT 'Base price per night',
     `capacity` TINYINT NOT NULL DEFAULT 2 COMMENT 'Max guests',
     `total_rooms` INT NOT NULL DEFAULT 0 COMMENT 'Total rooms of this type',
+    `description` VARCHAR(512) DEFAULT NULL COMMENT 'Room type description',
+    `amenities` VARCHAR(512) DEFAULT NULL COMMENT 'Amenities (comma-separated)',
+    `image_url` VARCHAR(256) DEFAULT NULL COMMENT 'Room type cover image URL',
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Room type definitions';
 
@@ -66,15 +69,16 @@ CREATE TABLE IF NOT EXISTS `daily_room_inventories` (
     `booking_id` INT NULL DEFAULT NULL COMMENT 'Associated booking ID',
     PRIMARY KEY (`room_id`, `date`),
     INDEX `idx_date_status` (`date`, `status`),
+    INDEX `idx_status_held_until` (`status`, `held_until`),
     CONSTRAINT `fk_dri_room` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE CASCADE,
     CONSTRAINT `fk_dri_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Daily room inventory';
 
 -- Seed data
-INSERT INTO `room_types` (`name`, `base_price`, `capacity`, `total_rooms`) VALUES
-    ('Standard Twin', 299.00, 2, 10),
-    ('Deluxe King', 499.00, 2, 8),
-    ('Executive Suite', 899.00, 4, 4);
+INSERT INTO `room_types` (`name`, `base_price`, `capacity`, `total_rooms`, `description`, `amenities`, `image_url`) VALUES
+    ('Standard Twin', 299.00, 2, 10, '舒适的标准双床房，配备两张单人床，适合商务出差或亲友同行。', 'WiFi,空调,电视,吹风机', 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=800&q=80'),
+    ('Deluxe King', 499.00, 2, 8, '宽敞的大床房，配备 King Size 舒适大床，享受优质睡眠体验。', 'WiFi,空调,电视,迷你吧,保险箱', 'https://images.unsplash.com/photo-1611892440504-42a792e56d4b?w=800&q=80'),
+    ('Executive Suite', 899.00, 4, 4, '豪华行政套房，配备独立客厅与卧室，适合家庭入住或高端商务接待。', 'WiFi,空调,电视,迷你吧,浴缸,客厅,咖啡机', 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&q=80');
 
 INSERT INTO `rooms` (`room_number`, `room_type_id`, `status`) VALUES
     ('101', 1, 'active'), ('102', 1, 'active'), ('103', 1, 'active'),

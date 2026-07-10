@@ -10,6 +10,9 @@ interface RoomType {
   base_price: string
   capacity: number
   total_rooms: number
+  description?: string
+  amenities?: string
+  image_url?: string
 }
 
 const roomTypes = ref<RoomType[]>([])
@@ -26,6 +29,9 @@ const typeForm = ref({
   base_price: 100,
   capacity: 2,
   total_rooms: 0,
+  description: '',
+  amenities: '',
+  image_url: '',
 })
 
 const rules = {
@@ -67,6 +73,9 @@ function openAddDialog() {
     base_price: 199,
     capacity: 2,
     total_rooms: 0,
+    description: '',
+    amenities: '',
+    image_url: '',
   }
   dialogVisible.value = true
 }
@@ -79,6 +88,9 @@ function openEditDialog(item: RoomType) {
     base_price: parseFloat(item.base_price),
     capacity: item.capacity,
     total_rooms: item.total_rooms,
+    description: item.description ?? '',
+    amenities: item.amenities ?? '',
+    image_url: item.image_url ?? '',
   }
   dialogVisible.value = true
 }
@@ -95,14 +107,19 @@ async function handleSubmit() {
             base_price: typeForm.value.base_price.toString(),
             capacity: typeForm.value.capacity,
             total_rooms: typeForm.value.total_rooms,
+            description: typeForm.value.description || null,
+            amenities: typeForm.value.amenities || null,
+            image_url: typeForm.value.image_url || null,
           })
           ElMessage.success('新增房型成功')
         } else {
-          await api.put(`/admin/room-types/\${typeForm.value.id}`, {
+          await api.put(`/admin/room-types/${typeForm.value.id}`, {
             name: typeForm.value.name,
             base_price: typeForm.value.base_price.toString(),
             capacity: typeForm.value.capacity,
-            total_rooms: typeForm.value.total_rooms,
+            description: typeForm.value.description || null,
+            amenities: typeForm.value.amenities || null,
+            image_url: typeForm.value.image_url || null,
           })
           ElMessage.success('房型更新成功')
         }
@@ -133,22 +150,38 @@ async function handleSubmit() {
 
     <!-- Table List -->
     <el-table v-loading="loading" :data="roomTypes" stripe style="width: 100%" class="admin-table">
-      <el-table-column prop="id" label="房型ID" width="90" />
-      <el-table-column prop="name" label="房型名称" min-width="150">
+      <el-table-column prop="id" label="房型ID" width="80" />
+      <el-table-column label="房型名称" min-width="140">
         <template #default="{ row }">
           <strong>{{ row.name }}</strong>
         </template>
       </el-table-column>
-      <el-table-column label="基准价格 (每晚)" width="150">
+      <el-table-column label="基准价格 (每晚)" width="140">
         <template #default="{ row }">
           <span class="price-val">¥{{ row.base_price }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="最大容纳" width="100">
+      <el-table-column label="容纳" width="70">
         <template #default="{ row }">{{ row.capacity }} 人</template>
       </el-table-column>
-      <el-table-column prop="total_rooms" label="客房物理总量" width="120" />
-      <el-table-column label="操作" width="120">
+      <el-table-column prop="total_rooms" label="房间数" width="80" />
+      <el-table-column label="简介" min-width="180" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="text-muted">{{ row.description || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="设施" min-width="160" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="text-muted">{{ row.amenities || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="封面图" width="100">
+        <template #default="{ row }">
+          <el-image v-if="row.image_url" :src="row.image_url" style="width: 60px; height: 40px; border-radius: 4px;" fit="cover" />
+          <span v-else class="text-muted">-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="120" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" :icon="Edit" size="small" @click="openEditDialog(row)">
             编辑
@@ -197,6 +230,33 @@ async function handleSubmit() {
             style="width: 100%" 
           />
         </el-form-item>
+        <el-form-item label="房型简介">
+          <el-input
+            v-model="typeForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="描述房型特点，如：舒适的标准双床房..."
+            maxlength="512"
+            show-word-limit
+          />
+        </el-form-item>
+        <el-form-item label="设施标签">
+          <el-input
+            v-model="typeForm.amenities"
+            placeholder="逗号分隔，如：WiFi,空调,电视"
+            maxlength="512"
+          />
+        </el-form-item>
+        <el-form-item label="封面图片链接">
+          <el-input
+            v-model="typeForm.image_url"
+            placeholder="https://images.unsplash.com/photo-xxx"
+            maxlength="256"
+          />
+          <div v-if="typeForm.image_url" class="image-preview">
+            <el-image :src="typeForm.image_url" style="width: 100%; max-height: 120px; border-radius: 4px; margin-top: 8px;" fit="cover" />
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取 消</el-button>
@@ -238,5 +298,14 @@ async function handleSubmit() {
 .price-val {
   color: var(--primary-color);
   font-weight: 700;
+}
+
+.text-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.image-preview {
+  width: 100%;
 }
 </style>

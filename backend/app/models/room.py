@@ -21,6 +21,9 @@ class RoomType(Base):
     base_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     capacity: Mapped[int] = mapped_column(SmallInteger, default=2, nullable=False)
     total_rooms: Mapped[int] = mapped_column(default=0, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True, default=None)
+    amenities: Mapped[str | None] = mapped_column(String(512), nullable=True, default=None)
+    image_url: Mapped[str | None] = mapped_column(String(256), nullable=True, default=None)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="room_type")
 

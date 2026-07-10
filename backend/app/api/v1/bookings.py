@@ -22,13 +22,14 @@ async def create_booking(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Create a new booking with Hold-then-Confirm phase 1 (pessimistic lock)."""
-    return await booking_service.create_hold_booking(
+    booking = await booking_service.create_hold_booking(
         db,
         user_id=current_user.user_id,
         room_id=data.room_id,
         check_in=data.check_in,
         check_out=data.check_out,
     )
+    return await booking_service.serialize_booking(db, booking)
 
 
 @router.get("/my", response_model=list[BookingResponse])
@@ -42,7 +43,8 @@ async def my_bookings(
         .where(Booking.user_id == current_user.user_id)
         .order_by(Booking.created_at.desc())
     )
-    return result.scalars().all()
+    bookings = result.scalars().all()
+    return await booking_service.serialize_bookings(db, list(bookings))
 
 
 @router.get("/{booking_id}", response_model=BookingResponse, operation_id="get_booking")
@@ -61,7 +63,7 @@ async def get_booking(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
     if booking.user_id != current_user.user_id and current_user.role.value != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    return booking
+    return await booking_service.serialize_booking(db, booking)
 
 
 @router.post("/{booking_id}/cancel", operation_id="cancel_booking")

@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.models.booking import Booking, BookingStatus
 from app.models.inventory import DailyRoomInventory, InventoryStatus
 from app.models.room import Room, RoomStatus
+from app.schemas.room import BookingResponse
 from app.services import inventory_service
 from app.services.transaction import transaction
 
@@ -27,6 +28,37 @@ async def _load_booking(db: AsyncSession, booking_id: int) -> Booking:
     if not booking:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
     return booking
+
+
+async def get_held_until_map(db: AsyncSession, booking_ids: list[int]) -> dict[int, datetime]:
+    """Return MIN(held_until) per booking from linked inventory rows."""
+    if not booking_ids:
+        return {}
+    result = await db.execute(
+        select(DailyRoomInventory.booking_id, func.min(DailyRoomInventory.held_until))
+        .where(DailyRoomInventory.booking_id.in_(booking_ids))
+        .group_by(DailyRoomInventory.booking_id)
+    )
+    return {row[0]: row[1] for row in result.all() if row[1] is not None}
+
+
+async def serialize_booking(db: AsyncSession, booking: Booking) -> BookingResponse:
+    held_until = None
+    if booking.status == BookingStatus.PENDING:
+        held_map = await get_held_until_map(db, [booking.id])
+        held_until = held_map.get(booking.id)
+    return BookingResponse.model_validate(booking).model_copy(update={"held_until": held_until})
+
+
+async def serialize_bookings(db: AsyncSession, bookings: list[Booking]) -> list[BookingResponse]:
+    pending_ids = [b.id for b in bookings if b.status == BookingStatus.PENDING]
+    held_map = await get_held_until_map(db, pending_ids)
+    return [
+        BookingResponse.model_validate(b).model_copy(
+            update={"held_until": held_map.get(b.id) if b.status == BookingStatus.PENDING else None}
+        )
+        for b in bookings
+    ]
 
 
 async def create_hold_booking(

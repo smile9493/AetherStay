@@ -21,6 +21,9 @@ interface Room {
     name: string
     base_price: string
     capacity: number
+    description?: string
+    amenities?: string
+    image_url?: string
   }
 }
 
@@ -325,8 +328,13 @@ function getRoomTypeColor(typeName: string) {
           class="room-card-col"
         >
           <div class="room-card-wrapper glass-panel glass-panel-hover">
-            <!-- Room Image visual placeholder -->
-            <div class="room-thumbnail" :style="{ background: getRoomTypeColor(room.room_type?.name || '') }">
+            <!-- Room Image -->
+            <div
+              class="room-thumbnail"
+              :style="room.room_type?.image_url
+                ? { backgroundImage: `url(${room.room_type.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                : { background: getRoomTypeColor(room.room_type?.name || '') }"
+            >
               <span class="room-number-tag">NO.{{ room.room_number }}</span>
               <div class="room-avatar-center">
                 <el-icon :size="48" style="color: rgba(255,255,255,0.7)"><House /></el-icon>
@@ -346,6 +354,12 @@ function getRoomTypeColor(typeName: string) {
                   <el-icon><User /></el-icon>
                   <span>最多容纳 {{ room.room_type?.capacity ?? 2 }} 人</span>
                 </div>
+              </div>
+              <p v-if="room.room_type?.description" class="room-desc-text">{{ room.room_type.description }}</p>
+              <div v-if="room.room_type?.amenities" class="room-amenity-tags">
+                <el-tag v-for="tag in room.room_type.amenities.split(',')" :key="tag" size="small" class="mini-tag">
+                  {{ tag.trim() }}
+                </el-tag>
               </div>
               
               <div class="room-footer-row">
@@ -597,6 +611,27 @@ function getRoomTypeColor(typeName: string) {
   gap: 8px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.room-desc-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+}
+
+.room-amenity-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mini-tag {
+  font-size: 10px;
 }
 
 .room-footer-row {
