@@ -3,61 +3,270 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import { User, Lock } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const form = ref({ username: '', password: '', confirm: '' })
+const ruleFormRef = ref()
+
+const validatePass2 = (_rule: any, value: string, callback: any) => {
+  if (value === '') {
+    callback(new Error('请再次输入密码'))
+  } else if (value !== form.value.password) {
+    callback(new Error('两次输入密码不一致!'))
+  } else {
+    callback()
+  }
+}
+
+const rules = {
+  username: [
+    { required: true, message: '请设置用户名', trigger: 'blur' },
+    { min: 3, max: 64, message: '用户名长度在 3 到 64 个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请设置密码', trigger: 'blur' },
+    { min: 6, max: 128, message: '密码长度不能少于 6 个字符', trigger: 'blur' }
+  ],
+  confirm: [
+    { required: true, validator: validatePass2, trigger: 'blur' }
+  ]
+}
 
 async function handleRegister() {
-  if (form.value.password !== form.value.confirm) {
-    ElMessage.warning('两次密码不一致')
-    return
-  }
-  try {
-    await auth.register(form.value.username, form.value.password)
-    ElMessage.success('注册成功')
-    router.push('/')
-  } catch {
-    ElMessage.error('注册失败，用户名可能已存在')
-  }
+  if (!ruleFormRef.value) return
+  await ruleFormRef.value.validate(async (valid: boolean) => {
+    if (valid) {
+      try {
+        await auth.register(form.value.username, form.value.password)
+        ElMessage.success('注册成功，已自动登录')
+        router.push('/')
+      } catch (err: any) {
+        const msg = err.response?.data?.detail || '注册失败，用户名可能已存在'
+        ElMessage.error(msg)
+      }
+    }
+  })
 }
 </script>
 
 <template>
-  <div class="auth-page">
-    <el-card class="auth-card">
-      <template #header><h2>注册</h2></template>
-      <el-form :model="form" label-width="80px" @submit.prevent="handleRegister">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" placeholder="3-64 个字符" />
+  <div class="auth-container">
+    <div class="glow-node glow-1"></div>
+    <div class="glow-node glow-2"></div>
+    
+    <div class="auth-card-wrapper glass-panel">
+      <div class="brand" @click="router.push('/')">
+        <el-icon class="brand-icon" :size="32"><House /></el-icon>
+        <span class="brand-name">AetherStay</span>
+      </div>
+      <h3 class="auth-title">创建新账户</h3>
+      <p class="auth-subtitle">开启您的智能化、尊贵酒店预订之旅</p>
+
+      <el-form 
+        ref="ruleFormRef"
+        :model="form" 
+        :rules="rules"
+        label-position="top"
+        @submit.prevent="handleRegister"
+        class="auth-form"
+      >
+        <el-form-item label="用户名" prop="username">
+          <el-input 
+            v-model="form.username" 
+            placeholder="3-64 个字符" 
+            :prefix-icon="User"
+            size="large"
+          />
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" placeholder="至少 6 个字符" show-password />
+        <el-form-item label="密码" prop="password">
+          <el-input 
+            v-model="form.password" 
+            type="password" 
+            placeholder="至少 6 个字符" 
+            :prefix-icon="Lock"
+            show-password 
+            size="large"
+          />
         </el-form-item>
-        <el-form-item label="确认密码">
-          <el-input v-model="form.confirm" type="password" placeholder="再次输入密码" show-password />
+        <el-form-item label="确认密码" prop="confirm">
+          <el-input 
+            v-model="form.confirm" 
+            type="password" 
+            placeholder="请再次输入密码" 
+            :prefix-icon="Lock"
+            show-password 
+            size="large"
+          />
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="auth.loading" native-type="submit">注册</el-button>
-          <el-button @click="router.push('/login')">已有账号</el-button>
-        </el-form-item>
+        
+        <div class="form-actions">
+          <el-button 
+            type="primary" 
+            class="submit-btn" 
+            :loading="auth.loading" 
+            native-type="submit"
+            size="large"
+          >
+            注 册
+          </el-button>
+          <div class="auth-switch">
+            <span>已有账号？</span>
+            <span class="link-text" @click="router.push('/login')">立即登录</span>
+          </div>
+        </div>
       </el-form>
-    </el-card>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.auth-page {
+.auth-container {
+  min-height: 100vh;
   display: flex;
   justify-content: center;
-  padding: 64px 16px;
+  align-items: center;
+  position: relative;
+  background: radial-gradient(circle at 50% 50%, #0f172a, #020617);
+  overflow: hidden;
+  padding: 24px;
 }
-.auth-card {
-  width: 420px;
+
+.glow-node {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  pointer-events: none;
 }
-.auth-card h2 {
-  margin: 0;
+
+.glow-1 {
+  width: 400px;
+  height: 400px;
+  background: var(--primary-color);
+  top: -100px;
+  left: -100px;
+}
+
+.glow-2 {
+  width: 500px;
+  height: 500px;
+  background: var(--accent-color);
+  bottom: -150px;
+  right: -100px;
+}
+
+.auth-card-wrapper {
+  width: 100%;
+  max-width: 460px;
+  padding: 40px 40px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  margin-bottom: 24px;
+}
+
+.brand-icon {
+  color: var(--primary-color);
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.5));
+}
+
+.brand-name {
+  font-family: var(--font-title);
+  font-size: 26px;
+  font-weight: 800;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-title {
   text-align: center;
+  font-size: 22px;
+  color: #fff;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.auth-subtitle {
+  text-align: center;
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 28px;
+}
+
+.auth-form :deep(.el-form-item__label) {
+  color: #cbd5e1;
+  font-weight: 500;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.auth-form :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none !important;
+}
+
+.auth-form :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--primary-color);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.auth-form :deep(.el-input__inner) {
+  color: #f8fafc;
+  height: 48px;
+}
+
+.auth-form :deep(.el-input__icon) {
+  color: #94a3b8;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 48px;
+  background: var(--accent-gradient);
+  border: none;
+  font-weight: 600;
+  font-size: 16px;
+  margin-top: 12px;
+  box-shadow: 0 8px 24px -6px rgba(99, 102, 241, 0.5);
+  transition: all 0.3s;
+}
+
+.submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px -4px rgba(99, 102, 241, 0.6);
+}
+
+.auth-switch {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 24px;
+}
+
+.link-text {
+  color: var(--primary-color);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.link-text:hover {
+  text-decoration: underline;
 }
 </style>

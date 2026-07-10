@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { House, Calendar, Ticket, Setting, SwitchButton } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 onMounted(() => auth.fetchUser())
@@ -15,71 +17,294 @@ async function handleLogout() {
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-header class="header">
-      <div class="logo" @click="router.push('/')">
-        <el-icon :size="24"><House /></el-icon>
-        <span>AetherStay</span>
-      </div>
-      <el-menu mode="horizontal" :ellipsis="false" router>
-        <el-menu-item index="/">首页</el-menu-item>
-        <el-menu-item index="/rooms">客房预订</el-menu-item>
-        <el-menu-item v-if="auth.user" index="/bookings">我的订单</el-menu-item>
-      </el-menu>
-      <div class="user-area">
-        <template v-if="auth.user">
-          <span class="username">{{ auth.user.username }}</span>
-          <el-button size="small" @click="handleLogout">退出</el-button>
-        </template>
-        <template v-else>
-          <el-button size="small" @click="router.push('/login')">登录</el-button>
-          <el-button size="small" type="primary" @click="router.push('/register')">注册</el-button>
-        </template>
+  <el-container class="layout-container">
+    <el-header class="nav-header">
+      <div class="header-inner glass-panel">
+        <div class="logo-area" @click="router.push('/')">
+          <el-icon class="logo-icon" :size="24"><House /></el-icon>
+          <span class="logo-text">AetherStay</span>
+        </div>
+        
+        <div class="menu-area">
+          <router-link to="/" class="nav-item" :class="{ active: route.name === 'home' }">
+            <el-icon><House /></el-icon>
+            <span>首页</span>
+          </router-link>
+          <router-link to="/rooms" class="nav-item" :class="{ active: route.name === 'rooms' }">
+            <el-icon><Calendar /></el-icon>
+            <span>客房预订</span>
+          </router-link>
+          <router-link 
+            v-if="auth.user && auth.user.role === 'customer'" 
+            to="/bookings" 
+            class="nav-item" 
+            :class="{ active: route.name === 'bookings' }"
+          >
+            <el-icon><Ticket /></el-icon>
+            <span>我的订单</span>
+          </router-link>
+          <router-link 
+            v-if="auth.user && auth.user.role === 'admin'" 
+            to="/admin/dashboard" 
+            class="nav-item admin-nav" 
+            :class="{ active: route.path.startsWith('/admin') }"
+          >
+            <el-icon><Setting /></el-icon>
+            <span>管理后台</span>
+          </router-link>
+        </div>
+
+        <div class="auth-area">
+          <template v-if="auth.user">
+            <el-dropdown trigger="click" placement="bottom-end">
+              <div class="user-profile">
+                <el-avatar :size="32" class="user-avatar">
+                  {{ auth.user.username.charAt(0).toUpperCase() }}
+                </el-avatar>
+                <span class="user-name">{{ auth.user.username }}</span>
+                <el-tag size="small" :type="auth.user.role === 'admin' ? 'danger' : 'success'" class="role-tag">
+                  {{ auth.user.role === 'admin' ? '管理员' : '贵宾' }}
+                </el-tag>
+              </div>
+              <template #dropdown>
+                <el-dropdown-menu class="user-dropdown-menu">
+                  <el-dropdown-item v-if="auth.user.role === 'admin'" @click="router.push('/admin/dashboard')">
+                    <el-icon><Setting /></el-icon> 管理后台
+                  </el-dropdown-item>
+                  <el-dropdown-item v-else @click="router.push('/bookings')">
+                    <el-icon><Ticket /></el-icon> 我的订单
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="handleLogout" class="logout-item">
+                    <el-icon><SwitchButton /></el-icon> 退出登录
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </template>
+          <template v-else>
+            <div class="auth-buttons">
+              <span class="login-link" @click="router.push('/login')">登录</span>
+              <el-button type="primary" class="register-btn" @click="router.push('/register')">
+                免费注册
+              </el-button>
+            </div>
+          </template>
+        </div>
       </div>
     </el-header>
-    <el-main>
-      <RouterView />
+    
+    <el-main class="main-content">
+      <div class="content-wrapper">
+        <RouterView v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </RouterView>
+      </div>
     </el-main>
-    <el-footer class="footer">
-      AetherStay &copy; 2026 — 酒店客房预订管理系统
+    
+    <el-footer class="nav-footer">
+      <div class="footer-content">
+        <p class="copyright">AetherStay &copy; 2026 — 智慧酒店与 AI Agent 双模预订系统</p>
+        <p class="tech-stack">Powered by FastAPI, Vue 3 & Element Plus</p>
+      </div>
     </el-footer>
   </el-container>
 </template>
 
 <style scoped>
-.layout {
+.layout-container {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
-.header {
+
+.nav-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 12px 24px;
+  height: 80px;
+}
+
+.header-inner {
+  max-width: 1280px;
+  height: 56px;
+  margin: 0 auto;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid var(--el-border-color-light);
-  padding: 0 24px;
+  justify-content: space-between;
+  border-radius: var(--radius-md) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
 }
-.logo {
+
+.logo-area {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--el-color-primary);
   cursor: pointer;
-  white-space: nowrap;
 }
-.user-area {
-  margin-left: auto;
+
+.logo-icon {
+  color: var(--primary-color);
+}
+
+.logo-text {
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 800;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.menu-area {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
-.username {
-  color: var(--el-text-color-secondary);
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
   font-size: 14px;
+  font-weight: 500;
+  transition: all 0.25s ease;
 }
-.footer {
-  text-align: center;
-  color: var(--el-text-color-secondary);
+
+.nav-item:hover {
+  background: rgba(99, 102, 241, 0.05);
+  color: var(--primary-color);
+}
+
+.nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.nav-item.admin-nav:hover {
+  background: rgba(239, 68, 68, 0.05);
+  color: #ef4444;
+}
+
+.nav-item.admin-nav.active {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.auth-area {
+  display: flex;
+  align-items: center;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.2s;
+}
+
+.user-profile:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.user-avatar {
+  background: var(--primary-color);
+  font-weight: 600;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.role-tag {
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.user-dropdown-menu :deep(.el-dropdown-menu__item) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
+  padding: 8px 16px;
+}
+
+.logout-item {
+  color: #ef4444 !important;
+}
+
+.auth-buttons {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.login-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.login-link:hover {
+  color: var(--primary-color);
+}
+
+.register-btn {
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  padding: 8px 16px;
+  box-shadow: 0 4px 12px -3px rgba(99, 102, 241, 0.3);
+}
+
+.main-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.content-wrapper {
+  min-height: calc(100vh - 200px);
+}
+
+.nav-footer {
+  border-top: 1px solid var(--card-border);
+  padding: 24px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.footer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.copyright {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.tech-stack {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>
