@@ -1,0 +1,28 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import api from '@/api'
+
+export interface {{ pascal }} {
+  id: number
+  name: string
+  created_at: string
+}
+
+export const use{{ pascal }}Store = defineStore('{{ snake }}', () => {
+  const items = ref<{{ pascal }}[]>([])
+  const loading = ref(false)
+
+  async function fetchItems() {
+    loading.value = true
+    try {
+      const { data } = await api.get<{{ pascal }}[]>('/{{ plural }}')
+      items.value = data
+    } catch {
+      items.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { items, loading, fetchItems }
+})

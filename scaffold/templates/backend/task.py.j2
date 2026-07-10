@@ -1,0 +1,15 @@
+import logging
+
+from app.database import async_session_factory
+
+logger = logging.getLogger(__name__)
+
+
+async def {{ task_name }}_task() -> None:
+    """Scheduled task: {{ task_description }}."""
+    async with async_session_factory() as session:
+        try:
+            # TODO: Implement task logic here
+            logger.info("Executing {{ task_name }}_task")
+        except Exception:
+            logger.exception("Failed to execute {{ task_name }}_task")

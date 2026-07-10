@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import api from '@/api'
+
+interface {{ pascal }} {
+  id: number
+  name: string
+  created_at: string
+}
+
+const items = ref<{{ pascal }}[]>([])
+const loading = ref(false)
+
+onMounted(loadItems)
+
+async function loadItems() {
+  loading.value = true
+  try {
+    const { data } = await api.get<{{ pascal }}[]>('/{{ plural }}')
+    items.value = data
+  } catch {
+    ElMessage.error('加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+<template>
+  <div class="{{ snake }}-page">
+    <h2>{{ pascal }}管理</h2>
+
+    <el-table v-loading="loading" :data="items" stripe style="width: 100%">
+      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column prop="name" label="名称" />
+      <el-table-column prop="created_at" label="创建时间" />
+    </el-table>
+  </div>
+</template>
+
+<style scoped>
+.{{ snake }}-page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+</style>

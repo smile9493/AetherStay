@@ -1,0 +1,41 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+
+defineOptions({ name: '{{ component_name }}' })
+
+interface Props {
+  title?: string
+}
+
+withDefaults(defineProps<Props>(), {
+  title: '{{ component_name }}',
+})
+
+const emit = defineEmits<{
+  (e: 'action'): void
+}>()
+
+const visible = ref(false)
+
+function handleAction() {
+  emit('action')
+}
+</script>
+
+<template>
+  <div class="{{ component_name|lower }}">
+    <el-card>
+      <template #header>
+        <span>{% raw %}{{ title }}{% endraw %}</span>
+      </template>
+      <p>{% raw %}{{ component_name }}{% endraw %} content here</p>
+      <el-button type="primary" @click="handleAction">Action</el-button>
+    </el-card>
+  </div>
+</template>
+
+<style scoped>
+.{{ component_name|lower }} {
+  margin-bottom: 16px;
+}
+</style>

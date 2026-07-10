@@ -1,0 +1,91 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.models.{{ snake }} import {{ pascal }}
+from app.models.user import UserRole
+from app.schemas.{{ snake }} import (
+    {{ pascal }}Create,
+    {{ pascal }}Update,
+    {{ pascal }}Response,
+)
+from app.utils.auth import CurrentUser, RoleChecker
+
+router = APIRouter(prefix="/{{ plural }}", tags=["admin-{{ plural }}"])
+
+require_admin = RoleChecker([UserRole.ADMIN])
+
+
+@router.get("", response_model=list[{{ pascal }}Response])
+async def list_{{ plural }}(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    """Admin: list all {{ plural }}."""
+    result = await db.execute(select({{ pascal }}).order_by({{ pascal }}.created_at.desc()))
+    return result.scalars().all()
+
+
+@router.get("/{{ '{' }}{{ snake }}_id{{ '}' }}", response_model={{ pascal }}Response)
+async def get_{{ snake }}(
+    {{ snake }}_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    """Admin: get a {{ snake }} by ID."""
+    obj = await db.get({{ pascal }}, {{ snake }}_id)
+    if not obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="{{ pascal }} not found")
+    return obj
+
+
+@router.post("", response_model={{ pascal }}Response, status_code=status.HTTP_201_CREATED)
+async def create_{{ snake }}(
+    data: {{ pascal }}Create,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    """Admin: create a new {{ snake }}."""
+    obj = {{ pascal }}(**data.model_dump())
+    db.add(obj)
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+@router.put("/{{ '{' }}{{ snake }}_id{{ '}' }}", response_model={{ pascal }}Response)
+async def update_{{ snake }}(
+    {{ snake }}_id: int,
+    data: {{ pascal }}Update,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    """Admin: update a {{ snake }}."""
+    obj = await db.get({{ pascal }}, {{ snake }}_id)
+    if not obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="{{ pascal }} not found")
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+@router.delete("/{{ '{' }}{{ snake }}_id{{ '}' }}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_{{ snake }}(
+    {{ snake }}_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    """Admin: delete a {{ snake }}."""
+    obj = await db.get({{ pascal }}, {{ snake }}_id)
+    if not obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="{{ pascal }} not found")
+
+    await db.delete(obj)
+    await db.commit()
