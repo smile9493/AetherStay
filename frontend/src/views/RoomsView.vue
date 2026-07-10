@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import {
+  isOnOrBeforeDateStr,
+  isPastDate,
+  isValidDateRange,
+} from '@/utils/dates'
 import { User, Search, Refresh, Timer, Wallet, CircleCheck } from '@element-plus/icons-vue'
 
 interface Room {
@@ -30,6 +35,7 @@ interface Booking {
 }
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const rooms = ref<Room[]>([])
 const loading = ref(false)
@@ -66,13 +72,52 @@ const roomTypes = computed(() => {
   return Array.from(typesMap.values())
 })
 
-onMounted(loadAllRooms)
+watch(
+  () => searchForm.value.check_in,
+  (checkIn) => {
+    const checkOut = searchForm.value.check_out
+    if (checkIn && checkOut && !isValidDateRange(checkIn, checkOut)) {
+      searchForm.value.check_out = ''
+    }
+  },
+)
+
+function parseRoomTypeId(value: unknown): number | undefined {
+  if (typeof value !== 'string' || value === '') return undefined
+  const id = Number(value)
+  return Number.isFinite(id) ? id : undefined
+}
+
+function filterByRoomType(list: Room[]): Room[] {
+  const typeId = searchForm.value.room_type_id
+  if (!typeId) return list
+  return list.filter((room) => room.room_type_id === typeId)
+}
+
+onMounted(async () => {
+  const { check_in, check_out, room_type_id } = route.query
+  if (typeof check_in === 'string') searchForm.value.check_in = check_in
+  if (typeof check_out === 'string') searchForm.value.check_out = check_out
+  searchForm.value.room_type_id = parseRoomTypeId(room_type_id)
+
+  if (searchForm.value.check_in && searchForm.value.check_out) {
+    if (!isValidDateRange(searchForm.value.check_in, searchForm.value.check_out)) {
+      searchForm.value.check_in = ''
+      searchForm.value.check_out = ''
+      await loadAllRooms()
+      return
+    }
+    await searchRooms()
+  } else {
+    await loadAllRooms()
+  }
+})
 
 async function loadAllRooms() {
   loading.value = true
   try {
     const { data } = await api.get<Room[]>('/rooms')
-    rooms.value = data
+    rooms.value = filterByRoomType(data)
   } catch {
     ElMessage.error('加载客房失败')
   } finally {
@@ -83,6 +128,10 @@ async function loadAllRooms() {
 async function searchRooms() {
   if (!searchForm.value.check_in || !searchForm.value.check_out) {
     ElMessage.warning('请选择入住和退房日期')
+    return
+  }
+  if (!isValidDateRange(searchForm.value.check_in, searchForm.value.check_out)) {
+    ElMessage.warning('退房日期必须晚于入住日期')
     return
   }
   loading.value = true
@@ -222,6 +271,7 @@ function getRoomTypeColor(typeName: string) {
             placeholder="请选择入住日期" 
             size="large"
             class="full-date-picker"
+            :disabled-date="isPastDate"
           />
         </el-form-item>
         <el-form-item label="退房时间">
@@ -232,6 +282,7 @@ function getRoomTypeColor(typeName: string) {
             placeholder="请选择退房日期" 
             size="large"
             class="full-date-picker"
+            :disabled-date="(d: Date) => searchForm.check_in ? isOnOrBeforeDateStr(d, searchForm.check_in) : isPastDate(d)"
           />
         </el-form-item>
         <el-form-item label="客房类型">

@@ -105,8 +105,8 @@ async function handleLogout() {
     
     <el-footer class="nav-footer">
       <div class="footer-content">
-        <p class="copyright">AetherStay &copy; 2026 — 智慧酒店与 AI Agent 双模预订系统</p>
-        <p class="tech-stack">Powered by FastAPI, Vue 3 & Element Plus</p>
+        <p class="copyright">AetherStay 酒店 &copy; 2026 — 品质住宿，安心之选</p>
+        <p class="tech-stack">客服热线 400-888-0000 · 全年无休</p>
       </div>
     </el-footer>
   </el-container>
