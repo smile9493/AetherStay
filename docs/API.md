@@ -178,6 +178,11 @@ POST /bookings/{booking_id}/pay
 
 **MCP Tool:** `confirm_booking_payment`
 
+**错误响应：**
+
+- `400 Hold has expired, please create a new booking` — `held_until` 已过期，需重新创建预订
+- `409 Inventory on {date} is not held` — 房态不是 HELD（如已被他人确认或释放）
+
 ### 我的订单
 
 ```

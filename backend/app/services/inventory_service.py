@@ -63,6 +63,31 @@ def mark_available(records: list[DailyRoomInventory]) -> None:
         record.held_until = None
 
 
+def is_bookable(record: DailyRoomInventory, now: datetime) -> bool:
+    """Check if record is bookable: available, or held but expired."""
+    if record.status == InventoryStatus.AVAILABLE:
+        return True
+    if record.status == InventoryStatus.HELD:
+        if record.held_until is not None and record.held_until < now:
+            return True
+    return False
+
+
+def is_held_valid(record: DailyRoomInventory, now: datetime) -> bool:
+    """Check if record has a valid (non-expired) hold."""
+    return (
+        record.status == InventoryStatus.HELD
+        and record.held_until is not None
+        and record.held_until >= now
+        or False
+    )
+
+
+def required_days(check_in: date, check_out: date) -> int:
+    """Calculate number of days in a booking range."""
+    return (check_out - check_in).days
+
+
 async def get_inventory_for_booking(
     db: AsyncSession,
     room_id: int,

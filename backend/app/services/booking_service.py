@@ -68,8 +68,18 @@ async def create_hold_booking(
                     detail="Some dates in the range are not open for booking",
                 )
 
+            now = datetime.now(UTC).replace(tzinfo=None)
             for record in daily_records:
-                if record.status != InventoryStatus.AVAILABLE:
+                if inventory_service.is_bookable(record, now):
+                    if record.status == InventoryStatus.HELD:
+                        # Expired hold — release it within the same transaction
+                        inventory_service.mark_available([record])
+                elif inventory_service.is_held_valid(record, now):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Room is held by another user on {record.date}",
+                    )
+                else:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
                         detail=f"Room is not available on {record.date}",
@@ -114,17 +124,27 @@ async def confirm_booking(db: AsyncSession, booking_id: int) -> Booking:
         records = await inventory_service.get_inventory_for_booking(
             db, booking.room_id, booking.check_in, booking.check_out, booking.id
         )
-        if not records:
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        expected_days = inventory_service.required_days(booking.check_in, booking.check_out)
+
+        # All failure modes (missing records, not HELD, expired) → 400 Hold expired
+        if len(records) != expected_days:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Inventory records not found for this booking",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hold has expired, please create a new booking",
             )
 
         for record in records:
-            if record.status not in (InventoryStatus.HELD, InventoryStatus.BOOKED):
+            if record.status != InventoryStatus.HELD:
                 raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Inventory on {record.date} is not held",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Hold has expired, please create a new booking",
+                )
+            if record.held_until is None or record.held_until < now:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Hold has expired, please create a new booking",
                 )
 
         inventory_service.mark_booked(records)
@@ -190,35 +210,48 @@ async def check_out_booking(db: AsyncSession, booking_id: int) -> Booking:
 
 
 async def release_expired_holds(db: AsyncSession) -> int:
-    now = datetime.now(UTC)
-    result = await db.execute(
-        select(DailyRoomInventory).where(
-            and_(
-                DailyRoomInventory.status == InventoryStatus.HELD,
-                DailyRoomInventory.held_until.is_not(None),
-                DailyRoomInventory.held_until < now,
-            )
-        )
-    )
-    expired_records = list(result.scalars().all())
-    if not expired_records:
-        return 0
-
-    booking_ids = {r.booking_id for r in expired_records if r.booking_id is not None}
+    now = datetime.now(UTC).replace(tzinfo=None)
     released = 0
 
     async with transaction(db):
-        for booking_id in booking_ids:
-            booking = await _get_booking_for_update(db, booking_id)
-            if booking.status != BookingStatus.PENDING:
-                continue
-
-            records = await inventory_service.get_inventory_for_booking(
-                db, booking.room_id, booking.check_in, booking.check_out, booking.id
+        result = await db.execute(
+            select(DailyRoomInventory)
+            .where(
+                and_(
+                    DailyRoomInventory.status == InventoryStatus.HELD,
+                    DailyRoomInventory.held_until.is_not(None),
+                    DailyRoomInventory.held_until < now,
+                )
             )
-            inventory_service.mark_available(records)
-            booking.status = BookingStatus.CANCELLED
+            .with_for_update()
+        )
+        expired_records = list(result.scalars().all())
+        if not expired_records:
+            return 0
+
+        # Group by booking_id
+        booking_map: dict[int | None, list[DailyRoomInventory]] = {}
+        for r in expired_records:
+            bid = r.booking_id
+            if bid not in booking_map:
+                booking_map[bid] = []
+            booking_map[bid].append(r)
+
+        for booking_id, records in booking_map.items():
+            # Get ALL inventory for the booking (not just expired rows)
+            if booking_id is not None:
+                booking = await _get_booking_for_update(db, booking_id)
+                all_records = await inventory_service.get_inventory_for_booking(
+                    db, booking.room_id, booking.check_in, booking.check_out, booking.id
+                )
+            else:
+                all_records = records
+
+            inventory_service.mark_available(all_records)
             released += 1
+
+            if booking_id is not None and booking.status == BookingStatus.PENDING:
+                booking.status = BookingStatus.CANCELLED
 
     return released
 

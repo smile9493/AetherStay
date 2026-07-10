@@ -1,8 +1,8 @@
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,13 +26,21 @@ async def search_rooms(
     if required_days <= 0:
         return []
 
+    now = datetime.now(UTC).replace(tzinfo=None)
     subq = (
         select(DailyRoomInventory.room_id)
         .where(
             and_(
                 DailyRoomInventory.date >= check_in,
                 DailyRoomInventory.date < check_out,
-                DailyRoomInventory.status == InventoryStatus.AVAILABLE,
+                or_(
+                    DailyRoomInventory.status == InventoryStatus.AVAILABLE,
+                    and_(
+                        DailyRoomInventory.status == InventoryStatus.HELD,
+                        DailyRoomInventory.held_until.is_not(None),
+                        DailyRoomInventory.held_until < now,
+                    ),
+                ),
             )
         )
         .group_by(DailyRoomInventory.room_id)

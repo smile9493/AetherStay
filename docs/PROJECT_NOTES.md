@@ -81,6 +81,38 @@
 **解决**：实现 `inventory_service.lock_inventory_for_update(nowait=True)` 与 `booking_service.create_hold_booking()`，创建订单时将房态置为 `held` 并设置 `held_until`。  
 **论文可用点**：作为系统核心难点——高并发防超卖的两阶段锁定机制（Hold-then-Confirm）的实现依据。
 
+### [2026-07-10] Hold 过期窗口一致性修复（P0/P1）
+
+**模块**：后端 / 业务逻辑 + 搜索接口  
+**阶段**：第 3 周 — Hold-then-Confirm 加固  
+**现象**：`held_until` 已过期但调度器尚未释放（0-60s 窗口）时：
+- `create_booking` 返回 409（误判为不可预订）
+- `rooms/search` 不返回该房间（房态不展示）
+- `confirm_booking` 仍允许支付（本应拒绝过期 hold）
+
+**原因**：所有路径均将 `held` 状态视为不可预订，未区分「有效 hold」与「过期 hold」；过期释放完全依赖 APScheduler 定时任务，存在窗口期。
+
+**解决**：
+
+1. **抽取判定函数**（`inventory_service.py`）：`is_bookable()` 将过期 held 视同 available；`is_held_valid()` 仅对未过期 held 返回 True。
+2. **`create_hold_booking`**：遍历 `daily_records` 时对过期 held 在同一事务内先 `mark_available()` 再 `mark_held()`，无需等待调度器。
+3. **`confirm_booking`**：加固校验——仅接受 HELD 状态（拒绝 BOOKED 防重复确认）、校验 `held_until >= now`、校验天数完整性。
+4. **`release_expired_holds`**：重构为单事务 + `FOR UPDATE` 行锁；分组处理时对 PENDING 订单取消 + 释放，对非 PENDING 订单仅释放房态；处理无关联 booking_id 的孤儿行。
+5. **`rooms/search`**：子查询条件增加 `OR (status='held' AND held_until < UTC_TIMESTAMP())`，使过期 held 房间重新出现在搜索结果中。
+
+**论文可用点**：分布式环境下「读取路径 + 写入路径」一致性治理的典型案例——通过统一判定函数消除调度器延迟造成的线程间不一致，体现工程中「防御性读取」的设计思想。
+
+---
+
+### [2026-07-10] 行锁未置于事务内导致 release_expired_holds 可能漏锁
+
+**模块**：后端 / SQLAlchemy 事务边界  
+**阶段**：第 3 周 — Hold 过期修复  
+**现象**：原 `release_expired_holds` 先 SELECT 过期记录（无锁），再在事务内逐条处理，并发下可能读取到已过期的快照后被其他事务修改。  
+**原因**：FOR UPDATE 需要与事务绑定，原实现将查询放在 `transaction(db)` 块之外。  
+**解决**：将 `SELECT ... WHERE ... FOR UPDATE` 整体放入 `transaction(db)` 上下文管理器内。  
+**论文可用点**：说明 SELECT FOR UPDATE 的事务依赖性及「查询即加锁」的工程约束。
+
 ---
 
 ## 待记录（开发过程中补充）
