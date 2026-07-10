@@ -1,13 +1,13 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.room import RoomType
 from app.models.user import UserRole
-from app.schemas.admin import RoomTypeCreate, RoomTypeUpdate
+from app.schemas.admin import PaginatedRoomTypesResponse, RoomTypeCreate, RoomTypeUpdate
 from app.schemas.room import RoomTypeResponse
 from app.utils.auth import CurrentUser, RoleChecker
 
@@ -16,13 +16,29 @@ router = APIRouter(prefix="/room-types", tags=["admin-room-types"])
 require_admin = RoleChecker([UserRole.ADMIN])
 
 
-@router.get("", response_model=list[RoomTypeResponse])
+@router.get("", response_model=PaginatedRoomTypesResponse)
 async def list_room_types(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[CurrentUser, Depends(require_admin)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
-    result = await db.execute(select(RoomType))
-    return result.scalars().all()
+    total = (await db.execute(select(func.count()).select_from(RoomType))).scalar_one()
+
+    result = await db.execute(
+        select(RoomType)
+        .order_by(RoomType.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = result.scalars().all()
+
+    return PaginatedRoomTypesResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=RoomTypeResponse, status_code=status.HTTP_201_CREATED)

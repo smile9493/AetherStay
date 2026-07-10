@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { House, Calendar, Ticket, Setting, SwitchButton } from '@element-plus/icons-vue'
@@ -10,6 +10,8 @@ const auth = useAuthStore()
 
 onMounted(() => auth.fetchUser())
 
+const isAdminRoute = computed(() => route.path.startsWith('/admin'))
+
 async function handleLogout() {
   await auth.logout()
   router.push('/login')
@@ -19,7 +21,7 @@ async function handleLogout() {
 <template>
   <el-container class="layout-container">
     <el-header class="nav-header">
-      <div class="header-inner glass-panel">
+      <div class="header-inner glass-panel" :class="{ 'admin-width': isAdminRoute }">
         <div class="logo-area" @click="router.push('/')">
           <el-icon class="logo-icon" :size="24"><House /></el-icon>
           <span class="logo-text">AetherStay</span>
@@ -93,7 +95,7 @@ async function handleLogout() {
       </div>
     </el-header>
     
-    <el-main class="main-content">
+    <el-main class="main-content" :class="{ 'admin-width': isAdminRoute }">
       <div class="content-wrapper">
         <RouterView v-slot="{ Component }">
           <transition name="fade" mode="out-in">
@@ -104,7 +106,7 @@ async function handleLogout() {
     </el-main>
     
     <el-footer class="nav-footer">
-      <div class="footer-content">
+      <div class="footer-content" :class="{ 'admin-width': isAdminRoute }">
         <p class="copyright">AetherStay 酒店 &copy; 2026 — 品质住宿，安心之选</p>
         <p class="tech-stack">客服热线 400-888-0000 · 全年无休</p>
       </div>
@@ -306,5 +308,9 @@ async function handleLogout() {
 .tech-stack {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.admin-width {
+  max-width: 1680px !important;
 }
 </style>

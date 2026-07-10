@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
-import { Plus, Edit } from '@element-plus/icons-vue'
+import { Plus, Edit, Setting } from '@element-plus/icons-vue'
+import AdminPagination from '@/components/admin/AdminPagination.vue'
+import { usePagination, type PaginatedResult } from '@/composables/usePagination'
 
 interface RoomType {
   id: number
@@ -17,6 +19,7 @@ interface RoomType {
 
 const roomTypes = ref<RoomType[]>([])
 const loading = ref(false)
+const { currentPage, pageSize, total, pageStart, pageEnd, applyPageResult } = usePagination(10)
 
 // Dialog states
 const dialogVisible = ref(false)
@@ -56,13 +59,27 @@ onMounted(loadRoomTypes)
 async function loadRoomTypes() {
   loading.value = true
   try {
-    const { data } = await api.get<RoomType[]>('/admin/room-types')
-    roomTypes.value = data
+    const { data } = await api.get<PaginatedResult<RoomType>>('/admin/room-types', {
+      params: { page: currentPage.value, page_size: pageSize.value },
+    })
+    roomTypes.value = data.items
+    applyPageResult(data)
   } catch {
     ElMessage.error('加载房型列表失败')
   } finally {
     loading.value = false
   }
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadRoomTypes()
+}
+
+function handleSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+  loadRoomTypes()
 }
 
 function openAddDialog() {
@@ -138,90 +155,146 @@ async function handleSubmit() {
 
 <template>
   <div class="admin-roomtypes-panel">
+    <!-- Header banner -->
     <div class="panel-header-row">
-      <div class="title-cell">
-        <h3>客房房型设置</h3>
-        <p>在此维护酒店销售的各类客房类型，包括其基准每晚房价和最大允许入住人数。</p>
+      <div class="panel-header-left">
+        <div class="header-icon">
+          <el-icon><Setting /></el-icon>
+        </div>
+        <div class="title-cell">
+          <h3>客房房型设置</h3>
+          <p>在此维护酒店销售的各类客房类型，设定其基准每晚房价和允许的入住人数上限。</p>
+        </div>
+        <span v-if="total > 0" class="stat-chip">共 {{ total }} 种房型</span>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openAddDialog">
+      <el-button type="primary" class="add-btn" :icon="Plus" @click="openAddDialog">
         新增客房房型
       </el-button>
     </div>
 
     <!-- Table List -->
-    <el-table v-loading="loading" :data="roomTypes" stripe style="width: 100%" class="admin-table">
-      <el-table-column prop="id" label="房型ID" width="80" />
-      <el-table-column label="房型名称" min-width="140">
-        <template #default="{ row }">
-          <strong>{{ row.name }}</strong>
-        </template>
-      </el-table-column>
-      <el-table-column label="基准价格 (每晚)" width="140">
-        <template #default="{ row }">
-          <span class="price-val">¥{{ row.base_price }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="容纳" width="70">
-        <template #default="{ row }">{{ row.capacity }} 人</template>
-      </el-table-column>
-      <el-table-column prop="total_rooms" label="房间数" width="80" />
-      <el-table-column label="简介" min-width="180" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="text-muted">{{ row.description || '-' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="设施" min-width="160" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span class="text-muted">{{ row.amenities || '-' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="封面图" width="100">
-        <template #default="{ row }">
-          <el-image v-if="row.image_url" :src="row.image_url" style="width: 60px; height: 40px; border-radius: 4px;" fit="cover" />
-          <span v-else class="text-muted">-</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="120" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" :icon="Edit" size="small" @click="openEditDialog(row)">
-            编辑
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="table-wrapper">
+      <el-table
+        v-loading="loading"
+        :data="roomTypes"
+        style="width: 100%"
+        class="admin-table-premium"
+        :max-height="560"
+        empty-text="暂无房型数据"
+      >
+        <!-- ID -->
+        <el-table-column prop="id" label="房型ID" width="80" />
+        
+        <!-- Name -->
+        <el-table-column label="房型名称" min-width="150">
+          <template #default="{ row }">
+            <span class="room-type-name">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Base Price -->
+        <el-table-column label="基准价格 (每晚)" width="150">
+          <template #default="{ row }">
+            <span class="price-val">¥{{ row.base_price }}</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Capacity -->
+        <el-table-column label="容纳人数" width="90">
+          <template #default="{ row }">
+            <span class="capacity-val">{{ row.capacity }} 人</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Rooms Count -->
+        <el-table-column prop="total_rooms" label="房间数量" width="100" />
+        
+        <!-- Description -->
+        <el-table-column label="房型简介" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="desc-text">{{ row.description || '-' }}</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Amenities -->
+        <el-table-column label="设施配置" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="desc-text">{{ row.amenities || '-' }}</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Cover Image -->
+        <el-table-column label="封面图" width="120">
+          <template #default="{ row }">
+            <div v-if="row.image_url" class="thumbnail-wrapper">
+              <el-image :src="row.image_url" class="room-thumbnail-mini" fit="cover" />
+            </div>
+            <span v-else class="desc-text">-</span>
+          </template>
+        </el-table-column>
+        
+        <!-- Actions -->
+        <el-table-column label="控制操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" class="edit-btn" :icon="Edit" @click="openEditDialog(row)">
+              编辑
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <AdminPagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-start="pageStart"
+        :page-end="pageEnd"
+        @page-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
+    </div>
 
     <!-- Add/Edit Dialog -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogType === 'add' ? '新增客房房型' : '编辑客房房型'"
-      width="440px"
+      width="480px"
       align-center
+      class="custom-admin-dialog"
     >
       <el-form 
         ref="formRef"
         :model="typeForm" 
         :rules="rules"
         label-position="top"
+        class="custom-form"
       >
         <el-form-item label="房型名称" prop="name">
           <el-input v-model="typeForm.name" placeholder="请输入房型名称 (如 总统套房)" />
         </el-form-item>
-        <el-form-item label="基准房价 (每晚价格)" prop="base_price">
-          <el-input-number 
-            v-model="typeForm.base_price" 
-            :min="10" 
-            :max="99999" 
-            style="width: 100%" 
-          />
-        </el-form-item>
-        <el-form-item label="最大容纳人数" prop="capacity">
-          <el-input-number 
-            v-model="typeForm.capacity" 
-            :min="1" 
-            :max="20" 
-            style="width: 100%" 
-          />
-        </el-form-item>
+        
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="基准房价 (每晚价格)" prop="base_price">
+              <el-input-number 
+                v-model="typeForm.base_price" 
+                :min="10" 
+                :max="99999" 
+                style="width: 100%" 
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="最大容纳人数" prop="capacity">
+              <el-input-number 
+                v-model="typeForm.capacity" 
+                :min="1" 
+                :max="20" 
+                style="width: 100%" 
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
         <el-form-item label="初始房间数量" prop="total_rooms" v-if="dialogType === 'add'">
           <el-input-number 
             v-model="typeForm.total_rooms" 
@@ -230,37 +303,42 @@ async function handleSubmit() {
             style="width: 100%" 
           />
         </el-form-item>
+        
         <el-form-item label="房型简介">
           <el-input
             v-model="typeForm.description"
             type="textarea"
             :rows="3"
-            placeholder="描述房型特点，如：舒适的标准双床房..."
+            placeholder="描述房型特色，例如：舒适的标准双床房..."
             maxlength="512"
             show-word-limit
           />
         </el-form-item>
-        <el-form-item label="设施标签">
+        
+        <el-form-item label="设施配置标签">
           <el-input
             v-model="typeForm.amenities"
-            placeholder="逗号分隔，如：WiFi,空调,电视"
+            placeholder="使用英文逗号分隔，如：WiFi,空调,独立卫浴"
             maxlength="512"
           />
         </el-form-item>
+        
         <el-form-item label="封面图片链接">
           <el-input
             v-model="typeForm.image_url"
             placeholder="https://images.unsplash.com/photo-xxx"
             maxlength="256"
           />
-          <div v-if="typeForm.image_url" class="image-preview">
-            <el-image :src="typeForm.image_url" style="width: 100%; max-height: 120px; border-radius: 4px; margin-top: 8px;" fit="cover" />
+          <div v-if="typeForm.image_url" class="image-preview-box">
+            <el-image :src="typeForm.image_url" class="preview-img" fit="cover" />
           </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取 消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确 定</el-button>
+        <div class="dialog-footer">
+          <el-button class="cancel-btn" @click="dialogVisible = false">取 消</el-button>
+          <el-button type="primary" class="submit-btn" :loading="submitLoading" @click="handleSubmit">确 定</el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -270,42 +348,187 @@ async function handleSubmit() {
 .admin-roomtypes-panel {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .panel-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-color);
+  background: var(--primary-light);
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.header-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--primary-light);
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
 }
 
 .title-cell h3 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 4px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
 }
 
 .title-cell p {
   font-size: 13px;
   color: var(--text-secondary);
+  margin-top: 2px;
 }
 
-.admin-table {
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-sm);
+.add-btn {
+  background: var(--accent-gradient);
+  border: none;
+  font-weight: 600;
+  box-shadow: 0 4px 14px -3px rgba(99, 102, 241, 0.4);
+}
+
+.add-btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+/* Premium Table Override */
+.table-wrapper {
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 10px 30px -15px rgba(99, 102, 241, 0.05);
+}
+
+.admin-table-premium {
+  background: transparent !important;
+}
+
+.admin-table-premium :deep(tr) {
+  background: transparent !important;
+}
+
+.admin-table-premium :deep(th.el-table__cell) {
+  background: rgba(255, 255, 255, 0.8) !important;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.admin-table-premium :deep(td.el-table__cell) {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.05);
+}
+
+/* Cell content layouts */
+.room-type-name {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .price-val {
+  font-family: var(--font-title);
+  font-weight: 800;
   color: var(--primary-color);
-  font-weight: 700;
+  font-size: 14px;
 }
 
-.text-muted {
-  color: var(--text-muted);
+.capacity-val {
   font-size: 13px;
+  color: var(--text-secondary);
 }
 
-.image-preview {
+.desc-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.thumbnail-wrapper {
+  width: 68px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 10px -3px rgba(0, 0, 0, 0.08);
+}
+
+.room-thumbnail-mini {
   width: 100%;
+  height: 100%;
+}
+
+.edit-btn {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.edit-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary-color);
+}
+
+/* Dialog styling */
+.custom-admin-dialog :deep(.el-dialog) {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+}
+
+.custom-form :deep(.el-form-item__label) {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.image-preview-box {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  margin-top: 10px;
+}
+
+.preview-img {
+  width: 100%;
+  max-height: 140px;
+  display: block;
+}
+
+.dialog-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.submit-btn {
+  background: var(--accent-gradient);
+  border: none;
+  font-weight: 600;
 }
 </style>

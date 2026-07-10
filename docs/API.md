@@ -226,7 +226,7 @@ POST /bookings/{booking_id}/cancel
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/bookings` | 全局订单列表（支持 `status`、`check_in_from`、`check_in_to` 筛选） |
+| GET | `/admin/bookings` | 全局订单列表（分页；`page` 默认 1，`page_size` 默认 20；支持 `status`、`check_in_from`、`check_in_to` 筛选） |
 | POST | `/admin/bookings/{id}/confirm` | 确认 pending 订单 |
 | POST | `/admin/bookings/{id}/check-in` | 办理入住 |
 | POST | `/admin/bookings/{id}/check-out` | 办理退房 |
@@ -235,7 +235,7 @@ POST /bookings/{booking_id}/cancel
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/rooms` | 客房列表（含 inactive） |
+| GET | `/admin/rooms` | 客房列表（分页；含 inactive） |
 | POST | `/admin/rooms` | 新增客房并生成 90 天房态 |
 | PUT | `/admin/rooms/{id}` | 更新门牌号/房型/状态 |
 
@@ -243,15 +243,21 @@ POST /bookings/{booking_id}/cancel
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/room-types` | 房型列表 |
+| GET | `/admin/room-types` | 房型列表（分页） |
 | POST | `/admin/room-types` | 新增房型 |
 | PUT | `/admin/room-types/{id}` | 更新房型 |
+
+### 房态日历
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/inventory` | 房态矩阵（按房间分页：`page`、`page_size` 默认 10） |
 
 ### 用户管理
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/admin/users` | 用户列表 |
+| GET | `/admin/users` | 用户列表（分页：`page`、`page_size`） |
 | POST | `/admin/users/{id}/disable` | 禁用用户 |
 
 ### 系统设置

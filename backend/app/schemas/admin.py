@@ -14,6 +14,51 @@ class AdminBookingListParams(BaseModel):
     status: BookingStatus | None = None
     check_in_from: date | None = None
     check_in_to: date | None = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+
+
+class PaginatedBookingsResponse(BaseModel):
+    items: list[BookingResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class PaginatedUsersResponse(BaseModel):
+    items: list[AdminUserResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class PaginatedRoomsResponse(BaseModel):
+    items: list[RoomResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class PaginatedRoomTypesResponse(BaseModel):
+    items: list[RoomTypeResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class InventoryRoomItem(BaseModel):
+    id: int
+    room_number: str
+    room_type: str
+
+
+class PaginatedInventoryResponse(BaseModel):
+    rooms: list[InventoryRoomItem]
+    dates: list[str]
+    matrix: dict[str, dict[str, str]]
+    total: int
+    page: int
+    page_size: int
 
 
 class RoomCreate(BaseModel):
