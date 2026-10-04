@@ -61,6 +61,14 @@ POST /auth/login
 
 响应头 `Set-Cookie` 写入 `access_token` 和 `refresh_token`。
 
+### 刷新 Token
+
+```
+POST /auth/refresh
+```
+
+需要 Cookie 认证（`refresh_token`）。校验后轮换会话并重新签发双 Token。
+
 ### 当前用户
 
 ```
@@ -78,6 +86,14 @@ GET /auth/me
   "created_at": "2026-07-10T07:16:06"
 }
 ```
+
+### 编辑当前用户
+
+```
+PUT /auth/me
+```
+
+需要 Cookie 认证。可更新手机号、邮箱等资料字段。
 
 ### 登出
 
@@ -226,6 +242,12 @@ POST /bookings/{booking_id}/cancel
 | POST | `/admin/bookings/{id}/check-in` | 办理入住 |
 | POST | `/admin/bookings/{id}/check-out` | 办理退房 |
 
+### 数据统计
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/stats` | Dashboard 统计（订单数、入住数、出租率、收入、用户数等） |
+
 ### 客房管理
 
 | 方法 | 路径 | 说明 |
@@ -233,6 +255,7 @@ POST /bookings/{booking_id}/cancel
 | GET | `/admin/rooms` | 客房列表（含 inactive） |
 | POST | `/admin/rooms` | 新增客房并生成 90 天房态 |
 | PUT | `/admin/rooms/{id}` | 更新门牌号/房型/状态 |
+| DELETE | `/admin/rooms/{id}` | 删除客房 |
 
 ### 房型管理
 
@@ -241,13 +264,29 @@ POST /bookings/{booking_id}/cancel
 | GET | `/admin/room-types` | 房型列表 |
 | POST | `/admin/room-types` | 新增房型 |
 | PUT | `/admin/room-types/{id}` | 更新房型 |
+| DELETE | `/admin/room-types/{id}` | 删除房型 |
+
+### 房态日历
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/inventory` | 房态日历矩阵（房间 × 日期） |
 
 ### 用户管理
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/admin/users` | 用户列表 |
+| GET | `/admin/users/{id}` | 用户详情 |
+| PUT | `/admin/users/{id}` | 编辑用户 |
 | POST | `/admin/users/{id}/disable` | 禁用用户 |
+
+### 系统设置
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/admin/settings` | 读取系统设置 |
+| PUT | `/admin/settings` | 更新系统设置（自动退房等） |
 
 默认管理员：`admin` / `admin1234`
 

@@ -131,7 +131,7 @@ pytest -q
 
 ```bash
 cd backend
-locust -f locustfile.py --host http://localhost:8000 --headless -u 50 -r 10 -t 30s
+locust -f locustfile.py --host http://localhost:8000 --headless -u 50 -r 10 -t 60s
 ```
 
 - `-u` 并发用户数、`-r` 每秒孵化数、`-t` 持续时间

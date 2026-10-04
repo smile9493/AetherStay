@@ -198,7 +198,7 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 
 - 带 `operation_id` 的路由会自动被 FastAPI-MCP 转为 Tool
 - Tool 名称 = `operation_id`，描述 = 函数 docstring
-- 当前已暴露：`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`
+- FastAPI-MCP 自动暴露带 `operation_id` 的全部路由；内置 Agent 另维护 17 个业务工具（用户端 5 + 管理端 12，见下文「按角色动态工具集」）
 
 #### 内置对话 Agent
 
@@ -309,11 +309,14 @@ Booking 1──N DailyRoomInventory (via booking_id)
 
 | 表 | 用途 |
 |----|------|
-| `users` | 用户凭证与角色（customer / admin） |
+| `users` | 用户凭证与角色（customer / admin）、会员等级与积分字段 |
 | `room_types` | 房型静态属性（名称、基准价、容量） |
 | `rooms` | 物理客房（门牌号、上下架状态） |
 | `daily_room_inventories` | 每日房态（available / held / booked / maintenance） |
-| `bookings` | 订单（日期、价格、状态机） |
+| `bookings` | 订单（日期、价格、状态机、幂等键） |
+| `system_settings` | 系统设置（自动退房开关/时间/时区） |
+| `refresh_token_sessions` | 刷新令牌会话（jti 轮换与吊销） |
+| `tool_call_audit_logs` | MCP/Agent 工具调用审计日志 |
 
 ### 预订状态机
 
@@ -503,9 +506,9 @@ cp .env.example .env
 |------|------|------|------|------|
 | 脚手架 | 第 1 周 | 项目基线、ORM、基础 API | Vue 基线、登录/预订页面 | ✅ 完成 |
 | 核心逻辑 | 第 2-3 周 | 悲观锁、Hold 状态机、支付确认 | 预订链路联调 | ✅ 完成 |
-| 管理后台 | 第 4-5 周 | 管理员 API、定时释放任务 | 管理工作台 | 🔲 后端完成 |
-| 压测优化 | 第 6 周 | Locust 压测、索引调优 | E2E 测试 | 🔲 待开发 |
-| 部署交付 | 第 7 周 | Docker 生产镜像、Nginx 调优 | 部署文档 | 🔲 待开发 |
+| 管理后台 | 第 4-5 周 | 管理员 API、定时任务、LLM Agent | 管理后台（后端 API 交付） | ✅ 完成 |
+| 压测优化 | 第 6 周 | Locust 压测、索引调优、微基准实验 | 测试脚本 | ✅ 完成 |
+| 部署交付 | 第 7 周 | Docker 生产镜像、Nginx 调优 | 部署文档 | ✅ 完成 |
 
 ## 参考文档
 
