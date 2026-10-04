@@ -58,10 +58,18 @@ def create_access_token(user_id: int, username: str, role: UserRole) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, jti: str) -> str:
     expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(user_id), "type": "refresh", "exp": expire}
+    payload = {"sub": str(user_id), "type": "refresh", "jti": jti, "exp": expire}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> tuple[int, str]:
+    """Decode a refresh token and return its (user_id, jti)."""
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    if payload.get("type") != "refresh":
+        raise JWTError("Not a refresh token")
+    return int(payload["sub"]), payload["jti"]
 
 
 async def get_current_user(
@@ -83,6 +91,28 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
+    return CurrentUser(user_id=user.id, username=user.username, role=user.role)
+
+
+async def get_optional_current_user(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CurrentUser | None:
+    """Resolve the current user from Cookie, returning None when not logged in."""
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = int(payload.get("sub", 0))
+        role = UserRole(payload.get("role", "customer"))
+    except (JWTError, ValueError, KeyError):
+        return None
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        return None
     return CurrentUser(user_id=user.id, username=user.username, role=user.role)
 
 

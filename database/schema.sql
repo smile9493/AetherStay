@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS `users` (
     `password_hash` VARCHAR(255) NOT NULL COMMENT 'Argon2id password hash',
     `role` ENUM('customer', 'admin') NOT NULL DEFAULT 'customer' COMMENT 'System role',
     `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Account active flag',
+    `phone` VARCHAR(32) NULL DEFAULT NULL COMMENT 'Contact phone',
+    `email` VARCHAR(128) NULL DEFAULT NULL COMMENT 'Contact email',
+    `membership_tier` ENUM('regular', 'silver', 'gold', 'diamond') NOT NULL DEFAULT 'regular' COMMENT 'Membership tier',
+    `membership_points` INT NOT NULL DEFAULT 0 COMMENT 'Membership points',
+    `admin_notes` TEXT NULL DEFAULT NULL COMMENT 'Internal admin notes',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation time',
     PRIMARY KEY (`id`),
     INDEX `idx_username` (`username`)
@@ -26,6 +31,9 @@ CREATE TABLE IF NOT EXISTS `room_types` (
     `base_price` DECIMAL(10, 2) NOT NULL COMMENT 'Base price per night',
     `capacity` TINYINT NOT NULL DEFAULT 2 COMMENT 'Max guests',
     `total_rooms` INT NOT NULL DEFAULT 0 COMMENT 'Total rooms of this type',
+    `description` TEXT NULL DEFAULT NULL COMMENT 'Room type description',
+    `amenities` TEXT NULL DEFAULT NULL COMMENT 'Amenities (JSON array text)',
+    `image_url` VARCHAR(512) NULL DEFAULT NULL COMMENT 'Room type image URL',
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Room type definitions';
 
@@ -50,11 +58,13 @@ CREATE TABLE IF NOT EXISTS `bookings` (
     `total_price` DECIMAL(10, 2) NOT NULL COMMENT 'Total booking price',
     `status` ENUM('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled') NOT NULL DEFAULT 'pending' COMMENT 'Booking status',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Booking creation time',
+    `idempotency_key` VARCHAR(64) NULL DEFAULT NULL COMMENT 'Idempotency key for duplicate request dedup',
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_bookings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     CONSTRAINT `fk_bookings_room` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE RESTRICT,
-    INDEX `idx_user_id` (`user_id`),
-    INDEX `idx_room_dates_status` (`room_id`, `status`, `check_in`, `check_out`)
+    INDEX `idx_user_created` (`user_id`, `created_at`),
+    INDEX `idx_room_dates_status` (`room_id`, `status`, `check_in`, `check_out`),
+    UNIQUE INDEX `idx_idempotency_key` (`idempotency_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Booking records';
 
 -- 5. Daily Room Inventories
@@ -66,15 +76,16 @@ CREATE TABLE IF NOT EXISTS `daily_room_inventories` (
     `booking_id` INT NULL DEFAULT NULL COMMENT 'Associated booking ID',
     PRIMARY KEY (`room_id`, `date`),
     INDEX `idx_date_status` (`date`, `status`),
+    INDEX `idx_status_held_until` (`status`, `held_until`),
     CONSTRAINT `fk_dri_room` FOREIGN KEY (`room_id`) REFERENCES `rooms` (`id`) ON DELETE CASCADE,
     CONSTRAINT `fk_dri_booking` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Daily room inventory';
 
 -- Seed data
-INSERT INTO `room_types` (`name`, `base_price`, `capacity`, `total_rooms`) VALUES
-    ('Standard Twin', 299.00, 2, 10),
-    ('Deluxe King', 499.00, 2, 8),
-    ('Executive Suite', 899.00, 4, 4);
+INSERT INTO `room_types` (`name`, `base_price`, `capacity`, `total_rooms`, `description`, `amenities`, `image_url`) VALUES
+    ('标准双床房', 299.00, 2, 10, '舒适标准双床房，适合商旅与结伴出行', '["免费Wi-Fi","空调","电视","24小时热水"]', '/images/standard-twin.jpg'),
+    ('豪华大床房', 499.00, 2, 8, '豪华大床房，配备高端寝具与办公区', '["免费Wi-Fi","空调","智能电视","迷你吧"]', '/images/deluxe-king.jpg'),
+    ('行政套房', 899.00, 4, 4, '行政套房，独立起居室，尊享行政礼遇', '["免费Wi-Fi","中央空调","客厅","浴缸","行政酒廊"]', '/images/executive-suite.jpg');
 
 INSERT INTO `rooms` (`room_number`, `room_type_id`, `status`) VALUES
     ('101', 1, 'active'), ('102', 1, 'active'), ('103', 1, 'active'),
@@ -98,3 +109,39 @@ CROSS JOIN (
 -- Default admin (username: admin, password: admin1234)
 INSERT INTO `users` (`username`, `password_hash`, `role`, `is_active`) VALUES
     ('admin', '$argon2id$v=19$m=65536,t=3,p=4$iVFqzRkjxHjv/b+XsjYmJA$SkLNfEfOFdTnyzO7T/NIkVxZz9N2D7T1hQWXryqmTu0', 'admin', 1);
+
+-- 6. System Settings (single row)
+CREATE TABLE IF NOT EXISTS `system_settings` (
+    `id` INT AUTO_INCREMENT COMMENT 'Settings primary key (single row)',
+    `auto_checkout_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Auto checkout switch',
+    `auto_checkout_time` VARCHAR(5) NOT NULL DEFAULT '12:00' COMMENT 'Daily auto checkout time (HH:MM)',
+    `timezone` VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT 'Timezone for checkout time comparison',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Global system settings';
+
+INSERT INTO `system_settings` (`id`, `auto_checkout_enabled`, `auto_checkout_time`, `timezone`) VALUES
+    (1, 1, '12:00', 'Asia/Shanghai');
+
+-- 7. Tool Call Audit Logs (审计日志，故意不建外键以保留审计链)
+CREATE TABLE IF NOT EXISTS `tool_call_audit_logs` (
+    `id` INT AUTO_INCREMENT COMMENT 'Audit log primary key',
+    `user_id` INT NULL DEFAULT NULL COMMENT 'Calling user ID (NULL for anonymous)',
+    `tool_name` VARCHAR(64) NOT NULL COMMENT 'Tool name invoked',
+    `arguments` TEXT NULL DEFAULT NULL COMMENT 'Serialized tool arguments',
+    `result` TEXT NULL DEFAULT NULL COMMENT 'Serialized tool result',
+    `success` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Whether the call succeeded',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Invocation time',
+    PRIMARY KEY (`id`),
+    INDEX `idx_audit_user_created` (`user_id`, `created_at`),
+    INDEX `idx_audit_tool` (`tool_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MCP/agent tool call audit log';
+
+-- 8. Refresh Token Sessions (令牌轮换与失效)
+CREATE TABLE IF NOT EXISTS `refresh_token_sessions` (
+    `jti` VARCHAR(36) NOT NULL COMMENT 'JWT ID (UUID) as session primary key',
+    `user_id` INT NOT NULL COMMENT 'Owning user ID',
+    `expires_at` DATETIME NOT NULL COMMENT 'Refresh token expiry',
+    `revoked_at` DATETIME NULL DEFAULT NULL COMMENT 'Revocation time (NULL = active)',
+    PRIMARY KEY (`jti`),
+    INDEX `idx_refresh_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Refresh token sessions for rotation/revocation';

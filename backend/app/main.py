@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.config import get_settings
+from app.tasks.auto_checkout import auto_checkout_due_bookings_task
 from app.tasks.hold_release import release_expired_holds_task
 
 settings = get_settings()
@@ -19,6 +20,13 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=settings.HOLD_RELEASE_INTERVAL_MINUTES,
         id="release_expired_holds",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        auto_checkout_due_bookings_task,
+        "interval",
+        minutes=settings.AUTO_CHECKOUT_INTERVAL_MINUTES,
+        id="auto_checkout_due_bookings",
         replace_existing=True,
     )
     scheduler.start()
@@ -52,7 +60,9 @@ def create_app() -> FastAPI:
         from fastapi_mcp import FastApiMCP
 
         mcp = FastApiMCP(app)
-        mcp.mount()
+        # 采用 Streamable HTTP 传输（MCP 现代传输方式，挂载于 /mcp），
+        # 供 Claude Desktop / Cursor / 兼容 MCP 协议的 Agent 客户端调用。
+        mcp.mount_http()
     except ImportError:
         pass
 

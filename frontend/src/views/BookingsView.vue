@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
@@ -62,55 +61,150 @@ const statusMap: Record<string, string> = {
   checked_out: '已退房',
   cancelled: '已取消',
 }
+
+// 将后端的 YYYY-MM-DD 转为中文日期，如 2026年11月10日
+function formatDate(value: string) {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? '')
+  if (!matched) return value ?? '-'
+  const [, year, month, day] = matched
+  return `${year}年${Number(month)}月${Number(day)}日`
+}
 </script>
 
 <template>
   <div class="bookings-page">
-    <h2>我的订单</h2>
-    <el-table v-loading="loading" :data="bookings" stripe style="width: 100%">
-      <el-table-column prop="id" label="订单号" width="80" />
-      <el-table-column label="房间">
-        <template #default="{ row }">
-          {{ row.room?.room_number ?? row.room_id }}
-          <span v-if="row.room?.room_type" class="room-type">({{ row.room.room_type.name }})</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="check_in" label="入住" width="120" />
-      <el-table-column prop="check_out" label="退房" width="120" />
-      <el-table-column label="总价" width="100">
-        <template #default="{ row }">¥{{ row.total_price }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'cancelled' ? 'info' : row.status === 'confirmed' ? 'success' : 'warning'">
-            {{ statusMap[row.status] ?? row.status }}
+    <header class="page-head">
+      <h2>我的订单</h2>
+      <p class="page-head__sub">
+        <template v-if="!loading && bookings.length">共 {{ bookings.length }} 个订单</template>
+        <template v-else>查看并管理你的预订记录</template>
+      </p>
+    </header>
+
+    <div v-loading="loading" class="booking-list">
+      <article v-for="booking in bookings" :key="booking.id" class="booking-card">
+        <div class="booking-card__main">
+          <h3 class="booking-card__title">
+            {{ booking.room?.room_number ?? booking.room_id }}
+            <small v-if="booking.room?.room_type">{{ booking.room.room_type.name }}</small>
+          </h3>
+          <p class="booking-card__dates">
+            {{ formatDate(booking.check_in) }} → {{ formatDate(booking.check_out) }}
+          </p>
+          <p class="booking-card__id">订单号 #{{ booking.id }}</p>
+        </div>
+
+        <div class="booking-card__side">
+          <el-tag
+            :type="booking.status === 'cancelled' ? 'info' : booking.status === 'confirmed' ? 'success' : 'warning'"
+            effect="light"
+            round
+          >
+            {{ statusMap[booking.status] ?? booking.status }}
           </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="120">
-        <template #default="{ row }">
+          <p class="booking-card__price">¥{{ booking.total_price }}</p>
           <el-button
-            v-if="['pending', 'confirmed'].includes(row.status)"
+            v-if="['pending', 'confirmed'].includes(booking.status)"
             type="danger"
+            plain
             size="small"
-            @click="cancelBooking(row.id)"
+            @click="cancelBooking(booking.id)"
           >
             取消
           </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <el-empty v-if="!loading && bookings.length === 0" description="暂无订单" />
+        </div>
+      </article>
+
+      <el-empty v-if="!loading && bookings.length === 0" description="暂无订单" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.bookings-page {
-  max-width: 1100px;
-  margin: 0 auto;
+.page-head {
+  margin-bottom: 24px;
 }
-.room-type {
-  color: var(--el-text-color-secondary);
+
+.page-head h2 {
+  font-size: 24px;
+}
+
+.page-head__sub {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.booking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 120px;
+}
+
+.booking-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.booking-card:hover {
+  border-color: var(--brand-200);
+  box-shadow: var(--shadow-sm);
+}
+
+.booking-card__title {
+  font-size: 16px;
+}
+
+.booking-card__title small {
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.booking-card__dates {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.booking-card__id {
+  margin-top: 4px;
   font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.booking-card__side {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.booking-card__price {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--brand-700);
+}
+
+@media (max-width: 640px) {
+  .booking-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .booking-card__side {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 </style>

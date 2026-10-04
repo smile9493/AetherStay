@@ -6,6 +6,10 @@ export interface User {
   id: number
   username: string
   role: string
+  phone?: string | null
+  email?: string | null
+  membership_tier?: string
+  membership_points?: number
   created_at: string
 }
 
@@ -20,6 +24,11 @@ export const useAuthStore = defineStore('auth', () => {
     } catch {
       user.value = null
     }
+  }
+
+  async function updateProfile(phone?: string | null, email?: string | null) {
+    const { data } = await api.put<User>('/auth/me', { phone, email })
+    user.value = data
   }
 
   async function login(username: string, password: string) {
@@ -47,5 +56,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, loading, fetchUser, login, register, logout }
+  return { user, loading, fetchUser, updateProfile, login, register, logout }
 })

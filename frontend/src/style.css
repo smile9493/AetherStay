@@ -1,21 +1,155 @@
+/* ==========================================================================
+   AetherStay — 全局设计令牌与基础样式
+   间距仅使用 4/8 基准刻度；圆角 8/12/16；阴影三级
+   ========================================================================== */
 :root {
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #303133;
-  background-color: #f5f7fa;
+  /* 品牌主色（深青绿） */
+  --brand-50: #f0faf9;
+  --brand-100: #d5f0ec;
+  --brand-200: #aee0da;
+  --brand-300: #7cc7c0;
+  --brand-400: #4aa8a1;
+  --brand-500: #1f8a82;
+  --brand-600: #0f766e;
+  --brand-700: #0c5e58;
+  --brand-800: #0a4a45;
+  --brand-900: #083b37;
+
+  /* 中性灰阶 */
+  --gray-50: #f8fafc;
+  --gray-100: #f1f5f9;
+  --gray-200: #e2e8f0;
+  --gray-300: #cbd5e1;
+  --gray-400: #94a3b8;
+  --gray-500: #64748b;
+  --gray-600: #475569;
+  --gray-700: #334155;
+  --gray-800: #1e293b;
+  --gray-900: #0f172a;
+
+  /* 强调色（琥珀，克制使用） */
+  --accent-50: #fffbeb;
+  --accent-500: #d97706;
+
+  /* 语义化颜色 */
+  --color-bg: var(--gray-50);
+  --color-surface: #ffffff;
+  --color-border: var(--gray-200);
+  --text-primary: var(--gray-800);
+  --text-secondary: var(--gray-500);
+  --text-tertiary: var(--gray-400);
+
+  /* 圆角体系 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* 阴影体系（表达层级，而非装饰） */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+  /* 布局与动效 */
+  --container: 1200px;
+  --header-h: 64px;
+  --transition-fast: 150ms ease;
+  --transition: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-* {
-  margin: 0;
-  padding: 0;
+/* 覆盖 Element Plus 主题变量：统一品牌色、圆角与字体
+   使用 :root:root 提高特异性——按需引入后组件样式分块加载，无法依赖先后顺序 */
+:root:root {
+  --el-color-primary: var(--brand-600);
+  --el-color-primary-light-3: #579f9a;
+  --el-color-primary-light-5: #87bab6;
+  --el-color-primary-light-7: #b7d6d3;
+  --el-color-primary-light-8: #cfe4e2;
+  --el-color-primary-light-9: #e7f1f0;
+  --el-color-primary-dark-2: var(--brand-700);
+  --el-border-radius-base: var(--radius-sm);
+  --el-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', Roboto, Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
+  margin: 0;
   min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--text-primary);
+  font-family: var(--el-font-family);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--brand-600);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--brand-700);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--brand-200);
+  color: var(--brand-900);
+}
+
+/* 统一页面容器 */
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 16px;
+  }
+}
+
+/* 尊重系统「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

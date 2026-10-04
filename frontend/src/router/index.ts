@@ -10,7 +10,9 @@ const router = createRouter({
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         { path: 'rooms', name: 'rooms', component: () => import('@/views/RoomsView.vue') },
+        { path: 'agent', name: 'agent', component: () => import('@/views/AgentView.vue') },
         { path: 'bookings', name: 'bookings', component: () => import('@/views/BookingsView.vue'), meta: { requiresAuth: true } },
+        { path: 'about', name: 'about', component: () => import('@/views/AboutView.vue'), meta: { requiresAuth: true, requiresAdmin: true } },
       ],
     },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
@@ -23,6 +25,9 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && !auth.user) {
     await auth.fetchUser()
     if (!auth.user) return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {
+    return { name: 'home' }
   }
 })
 

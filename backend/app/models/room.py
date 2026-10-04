@@ -1,7 +1,7 @@
 import enum
 from decimal import Decimal
 
-from sqlalchemy import Enum, ForeignKey, Numeric, SmallInteger, String
+from sqlalchemy import Enum, ForeignKey, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,6 +21,9 @@ class RoomType(Base):
     base_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     capacity: Mapped[int] = mapped_column(SmallInteger, default=2, nullable=False)
     total_rooms: Mapped[int] = mapped_column(default=0, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amenities: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(back_populates="room_type")
 

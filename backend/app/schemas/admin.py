@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.models.booking import BookingStatus
 from app.models.room import RoomStatus
-from app.models.user import UserRole
+from app.models.user import MembershipTier, UserRole
 from app.schemas.auth import UserResponse
 from app.schemas.room import BookingResponse, RoomResponse, RoomTypeResponse
 
@@ -33,6 +33,9 @@ class RoomTypeCreate(BaseModel):
     base_price: Decimal = Field(gt=0)
     capacity: int = Field(ge=1, le=20)
     total_rooms: int = Field(ge=0)
+    description: str | None = None
+    amenities: str | None = None
+    image_url: str | None = None
 
 
 class RoomTypeUpdate(BaseModel):
@@ -40,12 +43,40 @@ class RoomTypeUpdate(BaseModel):
     base_price: Decimal | None = Field(default=None, gt=0)
     capacity: int | None = Field(default=None, ge=1, le=20)
     total_rooms: int | None = Field(default=None, ge=0)
+    description: str | None = None
+    amenities: str | None = None
+    image_url: str | None = None
 
 
 class AdminUserResponse(UserResponse):
     is_active: bool
+    admin_notes: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AdminUserUpdate(BaseModel):
+    is_active: bool | None = None
+    phone: str | None = None
+    email: str | None = None
+    membership_tier: MembershipTier | None = None
+    membership_points: int | None = Field(default=None, ge=0)
+    admin_notes: str | None = None
+
+
+class SystemSettingResponse(BaseModel):
+    id: int
+    auto_checkout_enabled: bool
+    auto_checkout_time: str
+    timezone: str
+
+    model_config = {"from_attributes": True}
+
+
+class SystemSettingUpdate(BaseModel):
+    auto_checkout_enabled: bool | None = None
+    auto_checkout_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    timezone: str | None = None
 
 
 class MessageResponse(BaseModel):

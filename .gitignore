@@ -64,3 +64,12 @@ frontend/dist-ssr/
 
 # Docker
 mysql_data/
+
+# Thesis documents (not for publication)
+doc/
+*.backup.docx
+*.previous.docx
+
+# Temp / editor lock files
+tmp_body.txt
+~$*

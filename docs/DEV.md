@@ -90,11 +90,52 @@ docker compose up -d mysql      # 重新初始化
 
 `schema.sql` 自动创建：
 
-- 3 种房型（Standard Twin ¥299、Deluxe King ¥499、Executive Suite ¥899）
+- 3 种房型（标准双床房 ¥299、豪华大床房 ¥499、行政套房 ¥899）
 - 7 间客房（101-103、201-202、301-302）
 - 90 天房态记录（每间客房）
 
 默认管理员：`admin` / `admin1234`
+
+## 自动化测试与压测
+
+### 前置
+
+- 已启动 MySQL（`docker compose up -d mysql`，端口 3307）
+- 后端已在虚拟环境中安装运行依赖（`pip install -r requirements.txt`）
+
+### 安装测试依赖
+
+```bash
+cd backend
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements-dev.txt
+```
+
+### 运行接口测试
+
+```bash
+cd backend
+pytest -q
+```
+
+说明：
+
+- 测试使用 **独立数据库 `aetherstay_test`**（由 `tests/conftest.py` 自动创建/销毁），
+  不会污染开发库 `aetherstay`；需要 MySQL 的 `root/root` 账号来建库。
+- 测试通过 `httpx.ASGITransport` 在进程内调用 ASGI 应用，但底层是真实 MySQL，
+  因此悲观锁（`SELECT ... FOR UPDATE NOWAIT`）行为可被真实覆盖。
+- 用例覆盖：注册/登录/鉴权、客房搜索、预订 Hold–支付–取消、以及
+  「多并发争抢同一房间只允许 1 单」的防超卖断言。
+
+### 运行压测（Locust）
+
+```bash
+cd backend
+locust -f locustfile.py --host http://localhost:8000 --headless -u 50 -r 10 -t 30s
+```
+
+- `-u` 并发用户数、`-r` 每秒孵化数、`-t` 持续时间
+- 脚本复用预置管理员账号登录，任务权重：搜索 3 / 创建预订 1
 
 ## 故障排查
 

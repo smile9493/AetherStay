@@ -105,7 +105,7 @@ GET /rooms
     "status": "active",
     "room_type": {
       "id": 1,
-      "name": "Standard Twin",
+      "name": "标准双床房",
       "base_price": "299.00",
       "capacity": 2,
       "total_rooms": 10

@@ -28,6 +28,7 @@ async def create_booking(
         room_id=data.room_id,
         check_in=data.check_in,
         check_out=data.check_out,
+        idempotency_key=data.idempotency_key,
     )
 
 

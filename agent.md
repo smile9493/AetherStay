@@ -49,7 +49,8 @@ AetherStay/
 │       │   ├── router.py         # 路由聚合
 │       │   ├── auth.py           # 注册 / 登录 / 登出 / me
 │       │   ├── rooms.py          # 客房列表 / 搜索
-│       │   └── bookings.py       # 预订 CRUD / 取消
+│       │   ├── bookings.py       # 预订 CRUD / 取消
+│       │   └── agent.py          # AI 对话 SSE 端点（POST /chat）
 │       ├── models/               # SQLAlchemy ORM（禁止放业务逻辑）
 │       │   ├── user.py
 │       │   ├── room.py           # RoomType + Room
@@ -62,6 +63,10 @@ AetherStay/
 │       │   ├── booking_service.py
 │       │   ├── inventory_service.py
 │       │   └── transaction.py
+│       ├── agent/                # 内置对话 Agent（LLM + 工具集）
+│       │   ├── service.py        # 流式 Agent 循环（DeepSeek）
+│       │   ├── tools.py          # 顾客/管理员工具集 + 动态分发
+│       │   └── schemas.py        # 聊天请求模型
 │       ├── tasks/
 │       │   └── hold_release.py   # APScheduler 过期 Hold 释放
 │       └── utils/
@@ -70,6 +75,7 @@ AetherStay/
 ├── frontend/                     # Vue 3 前端
 │   ├── src/
 │   │   ├── api/index.ts          # Axios 实例（withCredentials）
+│   │   ├── api/agent.ts          # 对话 Agent SSE 流式客户端
 │   │   ├── stores/auth.ts        # Pinia 认证 Store
 │   │   ├── router/index.ts       # 路由 + 守卫
 │   │   ├── layouts/MainLayout.vue
@@ -194,6 +200,35 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 - Tool 名称 = `operation_id`，描述 = 函数 docstring
 - 当前已暴露：`get_available_rooms`、`create_booking`、`get_booking`、`cancel_booking`
 
+#### 内置对话 Agent
+
+区别于上述「外部 Agent 通过 MCP 调用 API」的通道，`backend/app/agent/` 是一个内置于后端的对话 Agent：前端 `/agent` 对话页通过 `POST /api/v1/agent/chat`（SSE 流式）与之交互。
+
+- **入口**：`agent/service.py` 的 `stream_agent_events()` 实现「LLM 流式输出 → 工具调用 → 回填结果 → 再流式」的多轮循环。
+- **LLM**：OpenAI 兼容协议（默认 DeepSeek），由 `LLM_*` 环境变量配置。
+- **SSE 事件**：`text` / `tool_call` / `tool_result` / `error`，前端 `api/agent.ts` 用 fetch + ReadableStream 消费。
+- **鉴权**：`utils/auth.py` 的 `get_optional_current_user()` 从 Cookie 解析登录用户，未登录仅可查房。
+
+#### 按角色动态工具集（核心设计）
+
+Agent 的工具集在**运行时按用户角色动态装配**，而非静态全局列表：
+
+```
+get_tools(user) ──┬─ CUSTOMER_TOOLS（5 个，所有登录用户可用）
+                  └─ ADMIN_TOOLS（12 个，仅 role == admin 时追加）
+```
+
+- **定义**：`agent/tools.py` 以 `CUSTOMER_TOOLS` / `ADMIN_TOOLS` 两个常量表声明工具 schema，`get_tools(user)` 按角色分发。
+- **下发**：`agent/service.py` 将 `get_tools(user)` 的结果作为 LLM 请求的 `tools` 传入，非管理员根本不感知 `admin_*` 工具。
+- **双层校验**：除「不下发」外，每个 `admin_*` handler 内部仍用 `_is_admin(user)` 二次校验，防止越权。
+- **命名约定**：顾客工具名与 MCP `operation_id` 对齐；管理工具统一 `admin_*` 前缀，避免混用。
+
+顾客工具：`search_available_rooms`、`create_booking`、`list_my_bookings`、`cancel_booking`、`confirm_payment`
+
+管理工具：`admin_list_bookings`、`admin_confirm_booking`、`admin_check_in_booking`、`admin_check_out_booking`、`admin_list_rooms`、`admin_create_room`、`admin_update_room`、`admin_list_room_types`、`admin_create_room_type`、`admin_update_room_type`、`admin_list_users`、`admin_disable_user`
+
+**扩展新工具**：在 `tools.py` 中新增工具 schema + handler 并注册到 `_HANDLERS`，再归入 `CUSTOMER_TOOLS` 或 `ADMIN_TOOLS` 对应常量即可，无需改动 `service.py` 的循环逻辑。
+
 ### 前端
 
 #### 命名规范
@@ -222,6 +257,27 @@ async def endpoint(db: Annotated[AsyncSession, Depends(get_db)]):
 2. `router/index.ts` 添加路由（需登录则设 `meta: { requiresAuth: true }`）
 3. `layouts/MainLayout.vue` 导航菜单添加链接
 4. 如需新 API，在 `api/` 中封装
+
+#### 路由配置
+
+路由定义于 [router/index.ts](frontend/src/router/index.ts)，采用 `createWebHistory()`（History 模式，需 Nginx/Vite 回退到 `index.html`）。根路由 `/` 挂载 `MainLayout.vue`，各页面作为其 `children`：
+
+| 路径 | name | 组件 | 认证 |
+|------|------|------|------|
+| `/` | `home` | `HomeView.vue` | 否 |
+| `/rooms` | `rooms` | `RoomsView.vue` | 否 |
+| `/agent` | `agent` | `AgentView.vue` | 否（未登录仅可查房） |
+| `/bookings` | `bookings` | `BookingsView.vue` | `requiresAuth` |
+| `/about` | `about` | `AboutView.vue`（管理后台） | `requiresAuth` + `requiresAdmin` |
+| `/login` | `login` | `LoginView.vue` | 否 |
+| `/register` | `register` | `RegisterView.vue` | 否 |
+
+全局守卫 `router.beforeEach`：
+
+- `meta.requiresAuth` — 未登录则先 `fetchUser()`，仍无用户则重定向 `/login`（带 `redirect` 回跳参数）
+- `meta.requiresAdmin` — 非 `admin` 角色重定向首页
+
+> `/agent` 页面本身不设 `requiresAuth`，以支持未登录查询客房；预订等需登录操作由后端 SSE 端点按 Cookie 返回「请先登录」提示（见上文「内置对话 Agent」）。
 
 #### UI 规范
 
@@ -328,6 +384,12 @@ available → held (15min TTL) → booked
 | GET | `/users` | 用户列表 |
 | POST | `/users/{id}/disable` | 禁用用户 |
 
+### AI Agent `/api/v1/agent`
+
+| 方法 | 路径 | 认证 | 说明 |
+|------|------|------|------|
+| POST | `/chat` | 可选 | SSE 流式对话，按登录角色动态下发工具集 |
+
 ## 编码原则
 
 AI Agent 及开发者在修改代码时必须遵守：
@@ -429,6 +491,9 @@ cp .env.example .env
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh Token 有效期 | `7` |
 | `HOLD_TTL_MINUTES` | 预订 Hold 超时（分钟） | `15` |
 | `HOLD_RELEASE_INTERVAL_MINUTES` | 过期 Hold 扫描间隔（分钟） | `1` |
+| `LLM_API_KEY` | 对话 Agent 的 LLM 密钥 | 空（未配置则助手返回提示） |
+| `LLM_BASE_URL` | LLM 接口地址（OpenAI 兼容） | `https://api.deepseek.com` |
+| `LLM_MODEL` | LLM 模型名 | `deepseek-chat` |
 
 配置加载：`backend/app/config.py` 自动读取项目根目录 `.env`。
 

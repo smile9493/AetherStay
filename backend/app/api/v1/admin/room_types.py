@@ -2,12 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.room import RoomType
 from app.models.user import UserRole
-from app.schemas.admin import RoomTypeCreate, RoomTypeUpdate
+from app.schemas.admin import MessageResponse, RoomTypeCreate, RoomTypeUpdate
 from app.schemas.room import RoomTypeResponse
 from app.utils.auth import CurrentUser, RoleChecker
 
@@ -55,3 +56,25 @@ async def update_room_type(
     await db.commit()
     await db.refresh(room_type)
     return room_type
+
+
+@router.delete("/{room_type_id}", response_model=MessageResponse)
+async def delete_room_type(
+    room_type_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    room_type = await db.get(RoomType, room_type_id)
+    if not room_type:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room type not found")
+
+    try:
+        await db.delete(room_type)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Room type has related rooms and cannot be deleted",
+        )
+    return MessageResponse(message="Room type deleted")

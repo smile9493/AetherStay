@@ -2,13 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.room import Room, RoomType
 from app.models.user import UserRole
-from app.schemas.admin import RoomCreate, RoomUpdate
+from app.schemas.admin import MessageResponse, RoomCreate, RoomUpdate
 from app.schemas.room import RoomResponse
 from app.services import inventory_service
 from app.services.transaction import transaction
@@ -87,3 +88,28 @@ async def update_room(
         select(Room).options(selectinload(Room.room_type)).where(Room.id == room_id)
     )
     return result.scalar_one()
+
+
+@router.delete("/{room_id}", response_model=MessageResponse)
+async def delete_room(
+    room_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
+):
+    room = await db.get(Room, room_id)
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+
+    room_type = await db.get(RoomType, room.room_type_id)
+    try:
+        await db.delete(room)
+        if room_type and room_type.total_rooms > 0:
+            room_type.total_rooms -= 1
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Room has related bookings and cannot be deleted",
+        )
+    return MessageResponse(message="Room deleted")
