@@ -1,13 +1,18 @@
 """预订链路测试：创建（Hold）、取消、支付确认、我的订单，以及防超卖并发。"""
 
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.database import async_session_factory
-from app.models.booking import Booking
+from app.models.booking import Booking, BookingStatus
 from app.models.inventory import DailyRoomInventory, InventoryStatus
+from app.models.user import User
+from app.services import booking_service, inventory_service
+from app.services.transaction import transaction
 from tests.conftest import register_and_login
 
 NIGHTS = 3
@@ -180,3 +185,150 @@ async def test_concurrent_booking_same_room_no_oversell(client):
         )
         assert booking_count.scalar() == 1
         assert held_count.scalar() == NIGHTS
+
+
+async def test_concurrent_confirm_release_cancel_keeps_state_consistent(client):
+    """并发状态处理：支付确认 / 过期释放 / 取消三门操作同时作用于同一订单。
+
+    无论加锁顺序如何，最终订单状态与库存状态必须一致，且不残留 HELD 中间态。
+    """
+    await register_and_login(client, "booker_3way")
+    today = date.today()
+    room, check_in_str, check_out_str = await _pick_available_room(client, today)
+    room_id = room["id"]
+    check_in = date.fromisoformat(check_in_str)
+    check_out = date.fromisoformat(check_out_str)
+
+    # 直接构造一条 PENDING 且库存 HELD（已过期）的订单，使三门操作可同时竞争
+    async with async_session_factory() as session:
+        user_id = (
+            await session.execute(select(User.id).where(User.username == "booker_3way"))
+        ).scalar_one()
+        booking = Booking(
+            user_id=user_id,
+            room_id=room_id,
+            check_in=check_in,
+            check_out=check_out,
+            total_price=Decimal("299.00"),
+            status=BookingStatus.PENDING,
+        )
+        session.add(booking)
+        await session.flush()
+        for offset in range(NIGHTS):
+            d = check_in + timedelta(days=offset)
+            inv = (
+                await session.execute(
+                    select(DailyRoomInventory).where(
+                        DailyRoomInventory.room_id == room_id,
+                        DailyRoomInventory.date == d,
+                    )
+                )
+            ).scalar_one()
+            inv.status = InventoryStatus.HELD
+            inv.booking_id = booking.id
+            inv.held_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+        await session.commit()
+        booking_id = booking.id
+
+    async def do_confirm():
+        async with async_session_factory() as s:
+            try:
+                await booking_service.confirm_booking(s, booking_id)
+                return "confirmed"
+            except HTTPException:
+                return "confirm_failed"
+
+    async def do_cancel():
+        async with async_session_factory() as s:
+            try:
+                await booking_service.cancel_booking(s, booking_id, user_id)
+                return "cancelled"
+            except HTTPException:
+                return "cancel_failed"
+
+    async def do_release():
+        async with async_session_factory() as s:
+            return await booking_service.release_expired_holds(s)
+
+    await asyncio.gather(do_confirm(), do_cancel(), do_release())
+
+    async with async_session_factory() as session:
+        b = await session.get(Booking, booking_id)
+        inventories = (
+            await session.execute(
+                select(DailyRoomInventory).where(
+                    DailyRoomInventory.room_id == room_id,
+                    DailyRoomInventory.date >= check_in,
+                    DailyRoomInventory.date < check_out,
+                )
+            )
+        ).scalars().all()
+        # 订单状态与库存状态一致：确认→BOOKED；取消→AVAILABLE；绝不残留 HELD
+        if b.status == BookingStatus.CONFIRMED:
+            assert all(i.status == InventoryStatus.BOOKED for i in inventories)
+        else:
+            assert b.status == BookingStatus.CANCELLED
+            assert all(i.status == InventoryStatus.AVAILABLE for i in inventories)
+        assert all(i.status != InventoryStatus.HELD for i in inventories)
+
+
+async def test_rollback_after_inventory_hold_restores_booking_and_inventory(client):
+    """回滚验证：占用库存、写入订单后，于提交前模拟异常，订单与库存应共同回滚。"""
+    await register_and_login(client, "booker_rollback")
+    async with async_session_factory() as session:
+        user_id = (
+            await session.execute(select(User.id).where(User.username == "booker_rollback"))
+        ).scalar_one()
+        room_id = (
+            await session.execute(select(DailyRoomInventory.room_id).limit(1))
+        ).scalar_one()
+        check_in = date.today() + timedelta(days=30)
+        check_out = check_in + timedelta(days=NIGHTS)
+
+        before_bookings = (
+            await session.execute(select(func.count()).select_from(Booking))
+        ).scalar()
+
+        try:
+            async with transaction(session):
+                records = await inventory_service.lock_inventory_for_update(
+                    session, room_id, check_in, check_out
+                )
+                assert len(records) == NIGHTS
+                booking = Booking(
+                    user_id=user_id,
+                    room_id=room_id,
+                    check_in=check_in,
+                    check_out=check_out,
+                    total_price=Decimal("299.00"),
+                    status=BookingStatus.PENDING,
+                )
+                session.add(booking)
+                await session.flush()
+                inventory_service.mark_held(
+                    records,
+                    booking.id,
+                    datetime.now(timezone.utc) + timedelta(minutes=15),
+                )
+                raise RuntimeError("simulated failure before commit")
+        except RuntimeError:
+            pass
+
+    async with async_session_factory() as session:
+        after_bookings = (
+            await session.execute(select(func.count()).select_from(Booking))
+        ).scalar()
+        held = (
+            await session.execute(
+                select(func.count())
+                .select_from(DailyRoomInventory)
+                .where(
+                    DailyRoomInventory.room_id == room_id,
+                    DailyRoomInventory.date >= check_in,
+                    DailyRoomInventory.date < check_out,
+                    DailyRoomInventory.status == InventoryStatus.HELD,
+                )
+            )
+        ).scalar()
+        assert after_bookings == before_bookings
+        assert held == 0

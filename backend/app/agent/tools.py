@@ -650,13 +650,18 @@ async def execute_tool(db: AsyncSession, user: CurrentUser | None, name: str, ar
     if not _tool_rate_limiter.allow(rate_key):
         return json.dumps({"error": "请求过于频繁，请稍后再试"}, ensure_ascii=False)
 
-    # 敏感操作人工确认：未显式确认前拒绝执行
+    # 敏感操作人工确认：未显式确认前拒绝执行，并记审计（标记失败）
     if name in SENSITIVE_TOOLS and arguments.get("confirm") is not True:
-        return json.dumps({"error": f"敏感操作 {name} 需要用户明确确认（confirm=true）"}, ensure_ascii=False)
+        result = {"error": f"敏感操作 {name} 需要用户明确确认（confirm=true）"}
+        await _audit_tool_call(db, user, name, arguments, result, success=False)
+        return json.dumps(result, ensure_ascii=False)
 
     success = True
     try:
         result = await handler(db, user, arguments)
+        # 处理器返回业务错误（如越权/RBAC 拒绝）时，审计应标记为失败
+        if isinstance(result, dict) and "error" in result:
+            success = False
     except HTTPException as exc:
         result = {"error": exc.detail}
         success = False

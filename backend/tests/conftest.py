@@ -101,6 +101,8 @@ async def reset_state():
             )
         )
         await session.execute(text("DELETE FROM bookings"))
+        await session.execute(text("DELETE FROM refresh_token_sessions"))
+        await session.execute(text("DELETE FROM system_settings"))
         await session.commit()
 
 

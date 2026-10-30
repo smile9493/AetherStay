@@ -76,6 +76,46 @@ async def test_execute_tool_admin_disable_user_writes_audit():
         assert any(r.user_id == admin.user_id and r.success for r in rows)
 
 
+async def test_execute_tool_customer_cannot_call_admin_tool():
+    """越权：顾客即使带 confirm=true 调用管理员工具也应被拒，目标不被禁用，且留失败审计。"""
+    customer = await _mk_user("mcp_customer_1", UserRole.CUSTOMER)
+    target = await _mk_user("mcp_victim_3")
+    cu = CurrentUser(user_id=customer.id, username=customer.username, role=customer.role)
+    async with async_session_factory() as session:
+        out = await execute_tool(
+            session, cu, "admin_disable_user", {"user_id": target.id, "confirm": True}
+        )
+        assert "需要管理员权限" in json.loads(out)["error"]
+
+    async with async_session_factory() as session:
+        t = await session.get(User, target.id)
+        assert t.is_active is True
+        rows = (await session.execute(
+            select(ToolCallAuditLog).where(
+                ToolCallAuditLog.tool_name == "admin_disable_user",
+                ToolCallAuditLog.user_id == customer.id,
+            )
+        )).scalars().all()
+        assert any(not r.success for r in rows)
+
+
+async def test_execute_tool_sensitive_confirm_failure_is_audited():
+    """确认失效：敏感操作未带 confirm 时被拒绝，且审计记为失败。"""
+    admin = await _admin("mcp_admin_3")
+    async with async_session_factory() as session:
+        out = await execute_tool(session, admin, "admin_disable_user", {"user_id": 999999})
+        assert "confirm=true" in json.loads(out)["error"]
+
+    async with async_session_factory() as session:
+        rows = (await session.execute(
+            select(ToolCallAuditLog).where(
+                ToolCallAuditLog.tool_name == "admin_disable_user",
+                ToolCallAuditLog.user_id == admin.user_id,
+            )
+        )).scalars().all()
+        assert any(not r.success for r in rows)
+
+
 async def test_get_tools_rbac_filters_admin():
     customer = CurrentUser(user_id=1, username="c", role=UserRole.CUSTOMER)
     admin = CurrentUser(user_id=2, username="a", role=UserRole.ADMIN)

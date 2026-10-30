@@ -20,6 +20,9 @@ ROOMS = 300
 DAYS = 365
 STAY_NIGHTS = 3  # 搜索入住晚数
 
+# 每组查询在相同数据与索引条件下重复执行的次数，报告值取中位数以消除单次抖动
+REPEAT = 10
+
 
 def connect(db: str | None = None):
     return pymysql.connect(
@@ -88,6 +91,23 @@ def explain(cur, sql: str, params=()) -> tuple[str, float, str, str]:
     return text, cost, outer_rows, leaf_rows
 
 
+def median(vals):
+    vals = sorted(vals)
+    n = len(vals)
+    mid = n // 2
+    return vals[mid] if n % 2 else (vals[mid - 1] + vals[mid]) / 2
+
+
+def measure(cur, sql: str, params=()) -> tuple[float, str]:
+    """重复测量 REPEAT 次，返回 (cost_ms 中位数, 叶子扫描行数中位数)。"""
+    costs, leaves = [], []
+    for _ in range(REPEAT):
+        _, cost, _, leaf = explain(cur, sql, params)
+        costs.append(cost)
+        leaves.append(int(leaf))
+    return median(costs), str(int(median([float(x) for x in leaves])))
+
+
 SEARCH_SQL = (
     "SELECT room_id FROM daily_room_inventories "
     "WHERE date >= %s AND date < %s AND status = 'available' "
@@ -121,8 +141,8 @@ def main():
     print("=" * 92)
 
     def run_q1(label, hint):
-        _, cost, _, leaf = explain(cur, _hinted(SEARCH_SQL, "daily_room_inventories", hint), (ci, co, STAY_NIGHTS))
-        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}")
+        cost, leaf = measure(cur, _hinted(SEARCH_SQL, "daily_room_inventories", hint), (ci, co, STAY_NIGHTS))
+        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}  (中位数, N={REPEAT})")
 
     run_q1("全表扫描", "IGNORE INDEX (PRIMARY)")
     cur.execute("CREATE INDEX idx_date_status ON daily_room_inventories (date, status)")
@@ -139,8 +159,8 @@ def main():
     room_pick = ROOMS // 2
 
     def run_q2(label, hint):
-        _, cost, _, leaf = explain(cur, _hinted(LOCK_SQL, "daily_room_inventories", hint), (room_pick, ci, co))
-        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}")
+        cost, leaf = measure(cur, _hinted(LOCK_SQL, "daily_room_inventories", hint), (room_pick, ci, co))
+        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}  (中位数, N={REPEAT})")
 
     run_q2("全表扫描", "IGNORE INDEX (PRIMARY)")
     run_q2("主键 PRIMARY(room_id,date)", "FORCE INDEX (PRIMARY)")
@@ -166,8 +186,8 @@ def main():
     target_uid = 1234
 
     def run_q3(label, hint):
-        _, cost, _, leaf = explain(cur, _hinted(MYBOOKINGS_SQL, "bookings", hint), (target_uid,))
-        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}")
+        cost, leaf = measure(cur, _hinted(MYBOOKINGS_SQL, "bookings", hint), (target_uid,))
+        print(f"  {label:34s} cost={cost:9.3f}ms  scanned_rows={leaf}  (中位数, N={REPEAT})")
 
     run_q3("无复合索引（全表扫描）", "IGNORE INDEX (PRIMARY)")
     cur.execute("CREATE INDEX idx_user_created ON bookings (user_id, created_at)")
